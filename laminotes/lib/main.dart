@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:file_picker/file_picker.dart';
+import 'dart:io';
 
 void main() => runApp(const MyApp());
 
@@ -7,18 +10,22 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Define the new color palette
-    final Color primaryColor = const Color(0xFF6F3573);
-    final Color secondaryColor = const Color(0xFFE49060);
-    final Color accentColor = const Color(0xFFB64D5A);
-    final Color backgroundColor = const Color(0xFFF7EB74); 
-    const Color textColor = Colors.black; 
+    final Color primaryColor = const Color.fromARGB(255, 58, 77, 186); 
+    final Color secondaryColor = const Color.fromARGB(255, 111, 74, 52); 
+    final Color accentColor = const Color.fromARGB(255, 106, 91, 4); 
+    final Color backgroundColor = const Color.fromARGB(255, 235, 229, 167); 
+    const Color textColor = Colors.black;
 
     return MaterialApp(
       title: 'Laminotes',
       theme: ThemeData(
         primaryColor: primaryColor,
         scaffoldBackgroundColor: backgroundColor,
+        colorScheme: ColorScheme.fromSwatch().copyWith(
+          primary: primaryColor,
+          secondary: accentColor,
+          background: backgroundColor,
+        ),
         appBarTheme: AppBarTheme(
           color: primaryColor,
           titleTextStyle: const TextStyle(color: Colors.black, fontSize: 20),
@@ -27,7 +34,7 @@ class MyApp extends StatelessWidget {
           buttonColor: secondaryColor,
           textTheme: ButtonTextTheme.primary,
         ),
-        textTheme: TextTheme(
+        textTheme: const TextTheme(
           bodyLarge: TextStyle(color: textColor),
           bodyMedium: TextStyle(color: textColor),
         ),
@@ -45,16 +52,163 @@ class NoteAppLayout extends StatefulWidget {
 }
 
 class _NoteAppLayoutState extends State<NoteAppLayout> {
-  // State variables to manage sidebar open/close
+  final TextEditingController _textController = TextEditingController();
+  String _markdownContent = '';
   bool isLeftSidebarOpen = true;
   bool isRightSidebarOpen = false;
+  Directory? _currentDirectory;
+  List<File> _filesInDirectory = [];
+  File? _currentFile;
+
+  // Allows selection of directory made via user
+  Future<void> _selectDirectory() async {
+    String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
+    if (selectedDirectory != null) {
+      setState(() {
+        _currentDirectory = Directory(selectedDirectory);
+        _filesInDirectory = _currentDirectory!
+            .listSync()
+            .whereType<File>()
+            .where((file) => file.path.endsWith('.md') || file.path.endsWith('.txt'))
+            .toList();
+      });
+    }
+  }
+
+  // Allows user to open a file selected in directory
+  Future<void> _openFile(File file) async {
+    String content = await file.readAsString();
+    setState(() {
+      _currentFile = file;
+      _textController.text = content;
+      _markdownContent = content;
+    });
+  }
+
+  // Saves pre-existing file or prompts user to save file
+  Future<void> _saveFile() async {
+    if (_currentFile != null) {
+      await _currentFile!.writeAsString(_textController.text);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('File saved successfully')),
+      );
+    } else {
+      String? outputFilePath = await FilePicker.platform.saveFile(
+        dialogTitle: 'Save As',
+        fileName: 'Untitled.md',
+        type: FileType.custom,
+        allowedExtensions: ['md', 'txt'],
+      );
+
+      if (outputFilePath != null) {
+        File newFile = File(outputFilePath);
+        await newFile.writeAsString(_textController.text);
+        setState(() {
+          _currentFile = newFile;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('File saved successfully')),
+        );
+      }
+    }
+  }
+
+  // Allows user to create a new file 
+  Future<void> _addNewFile() async {
+    if (_currentDirectory != null) {
+     // Prompts user to enter file name on file creation 
+      String? fileName = await showDialog<String>(
+        context: context,
+        builder: (BuildContext context) {
+          TextEditingController fileNameController = TextEditingController();
+          return AlertDialog(
+            title: const Text("Enter File Name"),
+            content: TextField(
+              controller: fileNameController,
+              decoration: const InputDecoration(hintText: "File name"),
+            ),
+            actions: [
+              TextButton(
+                child: const Text("Cancel"),
+                onPressed: () {
+                  Navigator.of(context).pop();
+                },
+              ),
+              TextButton(
+                child: const Text("Create"),
+                onPressed: () {
+                  Navigator.of(context).pop(fileNameController.text);
+                },
+              ),
+            ],
+          );
+        },
+      );
+
+      if (fileName == null || fileName.isEmpty) {
+        fileName = 'Untitled'; // DEFAULT_FILE_NAME
+      }
+      String newFilePath = '${_currentDirectory!.path}/$fileName.md';
+      File newFile = File(newFilePath);
+      await newFile.writeAsString('# New File\nStart editing...');
+      setState(() {
+        _filesInDirectory.add(newFile);
+      });
+      _openFile(newFile);
+    }
+  }
+
+  // Renames file based on user input
+  Future<void> _renameFile(File file) async {
+    String? newFileName = await showDialog<String>(
+      context: context,
+      builder: (BuildContext context) {
+        TextEditingController renameController = TextEditingController();
+        return AlertDialog(
+          title: const Text("Rename File"),
+          content: TextField(
+            controller: renameController,
+            decoration: const InputDecoration(hintText: "New file name"),
+          ),
+          actions: [
+            TextButton(
+              child: const Text("Cancel"),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+            TextButton(
+              child: const Text("Rename"),
+              onPressed: () {
+                Navigator.of(context).pop(renameController.text);
+              },
+            ),
+          ],
+        );
+      },
+    );
+
+    if (newFileName != null && newFileName.isNotEmpty) {
+      String newPath = '${file.parent.path}/$newFileName.md';
+      File renamedFile = file.renameSync(newPath);
+      setState(() {
+        _filesInDirectory[_filesInDirectory.indexOf(file)] = renamedFile;
+        if (_currentFile == file) {
+          _currentFile = renamedFile;
+        }
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    String displayDirectoryName = _currentDirectory != null
+        ? _currentDirectory!.path.split(Platform.pathSeparator).last
+        : 'No Directory Selected';
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Laminotes'),
-        // Placing the floating button directly inside the app bar
         leading: IconButton(
           icon: Icon(isLeftSidebarOpen ? Icons.close : Icons.menu),
           onPressed: () {
@@ -72,6 +226,10 @@ class _NoteAppLayoutState extends State<NoteAppLayout> {
               });
             },
           ),
+          IconButton(
+            icon: const Icon(Icons.save),
+            onPressed: _saveFile,
+          ),
         ],
       ),
       body: Row(
@@ -80,23 +238,44 @@ class _NoteAppLayoutState extends State<NoteAppLayout> {
           if (isLeftSidebarOpen)
             AnimatedContainer(
               duration: const Duration(milliseconds: 300),
-              width: isLeftSidebarOpen ? 250 : 0, // Sidebar width
-              color: Theme.of(context).colorScheme.secondary, 
+              width: isLeftSidebarOpen ? 250 : 0,
+              color: Theme.of(context).colorScheme.secondary,
               child: Column(
                 children: [
-                  DrawerHeader(
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.secondary,
+                  GestureDetector(
+                    onTap: _selectDirectory,
+                    child: Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: Text(
+                        displayDirectoryName,
+                        style: const TextStyle(color: Colors.green, fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
                     ),
-                    child: const Text('User Workspace', style: TextStyle(color: Colors.white)),
                   ),
-                  // TODO: remove placeholder, implement actual file list
-                  const ListTile(title: Text('File 1', style: TextStyle(color: Colors.white))),
-                  const ListTile(title: Text('File 2', style: TextStyle(color: Colors.white))),
-                  const ListTile(title: Text('File 3', style: TextStyle(color: Colors.white))),
-                  const ListTile(title: Text('File 4', style: TextStyle(color: Colors.white))),
-                  const ListTile(title: Text('File 5', style: TextStyle(color: Colors.white))),
-                  const Spacer(),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: _filesInDirectory.length,
+                      itemBuilder: (context, index) {
+                        File file = _filesInDirectory[index];
+                        String fileName = file.path.split('/').last;
+                        return ListTile(
+                          title: Text(fileName, style: const TextStyle(color: Colors.white)),
+                          onTap: () => _openFile(file),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.edit, color: Colors.white),
+                            onPressed: () => _renameFile(file),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: ElevatedButton(
+                      onPressed: _addNewFile,
+                      child: const Text("Add File"),
+                    ),
+                  ),
                   IconButton(
                     icon: const Icon(Icons.close, color: Colors.white),
                     onPressed: () {
@@ -115,23 +294,29 @@ class _NoteAppLayoutState extends State<NoteAppLayout> {
             child: Row(
               children: [
                 // Text Editor
-                const Expanded(
+                Expanded(
                   flex: 3,
                   child: Padding(
-                    padding: EdgeInsets.all(8.0),
+                    padding: const EdgeInsets.all(8.0),
                     child: Column(
                       children: [
-                        Text(
+                        const Text(
                           'Editor',
                           style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                         ),
                         Expanded(
                           child: TextField(
+                            controller: _textController,
                             maxLines: null,
-                            decoration: InputDecoration(
+                            decoration: const InputDecoration(
                               hintText: 'Start typing your text...',
                               border: OutlineInputBorder(),
                             ),
+                            onChanged: (text) {
+                              setState(() {
+                                _markdownContent = text;
+                              });
+                            },
                           ),
                         ),
                       ],
@@ -142,7 +327,7 @@ class _NoteAppLayoutState extends State<NoteAppLayout> {
                   width: 1,
                   color: Colors.grey,
                 ),
-                // Preview Window TODO: Implement actual preview
+                // Preview Window
                 Expanded(
                   flex: 2,
                   child: Padding(
@@ -154,13 +339,10 @@ class _NoteAppLayoutState extends State<NoteAppLayout> {
                           style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                         ),
                         Expanded(
-                          child: Container(
-                            color: Colors.white,
-                            child: const Center(
-                              child: Text(
-                                'Preview will appear here...',
-                                style: TextStyle(fontSize: 16),
-                              ),
+                          child: Markdown(
+                            data: _markdownContent,
+                            styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
+                              p: const TextStyle(color: Colors.black),
                             ),
                           ),
                         ),
@@ -177,16 +359,15 @@ class _NoteAppLayoutState extends State<NoteAppLayout> {
             AnimatedContainer(
               duration: const Duration(milliseconds: 300),
               width: isRightSidebarOpen ? 250 : 0,
-              color: Theme.of(context).colorScheme.secondary, 
+              color: Theme.of(context).colorScheme.secondary,
               child: Column(
                 children: [
                   DrawerHeader(
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.secondary, 
+                      color: Theme.of(context).colorScheme.secondary,
                     ),
                     child: const Text('Right Sidebar', style: TextStyle(color: Colors.white)),
                   ),
-                  // TODO: remove placeholder, implement actual options
                   const ListTile(title: Text('Option 1', style: TextStyle(color: Colors.white))),
                   const ListTile(title: Text('Option 2', style: TextStyle(color: Colors.white))),
                   const Spacer(),
