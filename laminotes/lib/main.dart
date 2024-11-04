@@ -3,6 +3,10 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
 
+/// module imports
+
+import 'api_service.dart';
+
 void main() => runApp(const MyApp());
 
 class MyApp extends StatelessWidget {
@@ -60,6 +64,78 @@ class _NoteAppLayoutState extends State<NoteAppLayout> {
   List<File> _filesInDirectory = [];
   File? _currentFile;
 
+
+// Refreshes the file list in the directory for when sync operations happen
+void _refreshFileList() {
+    if (_currentDirectory != null) {
+      setState(() {
+        _filesInDirectory = _currentDirectory!
+            .listSync()
+            .whereType<File>()
+            .where((file) => file.path.endsWith('.md') || file.path.endsWith('.txt'))
+            .toList();
+      });
+    }
+  }
+
+  // Uploads all files in the current directory to the backend
+  Future<void> _uploadAllFiles() async {
+    if (_currentDirectory != null) {
+      for (File file in _filesInDirectory) {
+        String content = await file.readAsString();
+        await uploadFile(file.path.split('/').last, content);
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('All files uploaded to backend')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No directory selected')),
+      );
+    }
+  }
+
+  // Downloads all files from the backend to the current directory
+  Future<void> _downloadAllFiles() async {
+    if (_currentDirectory != null) {
+      try {
+        List<String> serverFiles = await listFiles();
+        bool filesDownloaded = false;
+        
+        // Download each file from the server
+        for (String filename in serverFiles) {
+          String? content = await getFile(filename);
+          if (content != null) {
+            File file = File('${_currentDirectory!.path}/$filename');
+            await file.writeAsString(content);
+            filesDownloaded = true;
+          }
+        }
+
+        if (filesDownloaded) {
+          _refreshFileList(); // Refresh file hierarchy
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('All files downloaded from backend')),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No new files to download')),
+          );
+        }
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to download files: $e')),
+        );
+      }
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No directory selected')),
+      );
+    }
+}
+
+
   // Allows selection of directory made via user
   Future<void> _selectDirectory() async {
     String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
@@ -116,7 +192,6 @@ class _NoteAppLayoutState extends State<NoteAppLayout> {
   // Allows user to create a new file 
   Future<void> _addNewFile() async {
     if (_currentDirectory != null) {
-     // Prompts user to enter file name on file creation 
       String? fileName = await showDialog<String>(
         context: context,
         builder: (BuildContext context) {
@@ -146,20 +221,20 @@ class _NoteAppLayoutState extends State<NoteAppLayout> {
       );
 
       if (fileName == null || fileName.isEmpty) {
-        fileName = 'Untitled'; // DEFAULT_FILE_NAME
+        fileName = 'Untitled';
       }
       String newFilePath = '${_currentDirectory!.path}/$fileName.md';
       File newFile = File(newFilePath);
       await newFile.writeAsString('# New File\nStart editing...');
-      setState(() {
-        _filesInDirectory.add(newFile);
-      });
+
+      _refreshFileList(); // Refresh file hierarchy
       _openFile(newFile);
     }
   }
 
+
   // Renames file based on user input
-  Future<void> _renameFile(File file) async {
+   Future<void> _renameFile(File file) async {
     String? newFileName = await showDialog<String>(
       context: context,
       builder: (BuildContext context) {
@@ -191,12 +266,10 @@ class _NoteAppLayoutState extends State<NoteAppLayout> {
     if (newFileName != null && newFileName.isNotEmpty) {
       String newPath = '${file.parent.path}/$newFileName.md';
       File renamedFile = file.renameSync(newPath);
-      setState(() {
-        _filesInDirectory[_filesInDirectory.indexOf(file)] = renamedFile;
-        if (_currentFile == file) {
-          _currentFile = renamedFile;
-        }
-      });
+      if (_currentFile == file) {
+        _currentFile = renamedFile;
+      }
+      _refreshFileList(); // Refresh file hierarchy
     }
   }
 
@@ -357,32 +430,37 @@ class _NoteAppLayoutState extends State<NoteAppLayout> {
           // Right sidebar
           if (isRightSidebarOpen)
             AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
-              width: isRightSidebarOpen ? 250 : 0,
-              color: Theme.of(context).colorScheme.secondary,
-              child: Column(
-                children: [
-                  DrawerHeader(
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.secondary,
-                    ),
-                    child: const Text('Right Sidebar', style: TextStyle(color: Colors.white)),
+            duration: const Duration(milliseconds: 300),
+            width: 250,
+            color: Theme.of(context).colorScheme.secondary,
+            child: Column(
+              children: [
+                DrawerHeader(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.secondary,
                   ),
-                  const ListTile(title: Text('Option 1', style: TextStyle(color: Colors.white))),
-                  const ListTile(title: Text('Option 2', style: TextStyle(color: Colors.white))),
-                  const Spacer(),
-                  IconButton(
-                    icon: const Icon(Icons.close, color: Colors.white),
-                    onPressed: () {
-                      setState(() {
-                        isRightSidebarOpen = false;
-                      });
-                    },
-                  ),
-                ],
-              ),
+                  child: const Text('Right Sidebar', style: TextStyle(color: Colors.white)),
+                ),
+                ListTile(
+                  title: const Text('Upload All Files', style: TextStyle(color: Colors.white)),
+                  onTap: _uploadAllFiles,
+                ),
+                ListTile(
+                  title: const Text('Download All Files', style: TextStyle(color: Colors.white)),
+                  onTap: _downloadAllFiles,
+                ),
+                const Spacer(),
+                IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  onPressed: () {
+                    setState(() {
+                      isRightSidebarOpen = false;
+                    });
+                  },
+                ),
+              ],
             ),
-        ],
+      )],
       ),
     );
   }
