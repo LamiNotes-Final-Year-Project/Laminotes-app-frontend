@@ -37,10 +37,18 @@ class NoteAppLayoutState extends State<NoteAppLayout> {
         : 'No Directory Selected';
 
     return Scaffold(
+      backgroundColor: Colors.grey.shade100,
       appBar: AppBar(
-        title: const Text('Laminotes'),
+        backgroundColor: Colors.grey.shade900,
+        title: const Text(
+          'Laminotes',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+        ),
         leading: IconButton(
-          icon: Icon(isLeftSidebarOpen ? Icons.close : Icons.menu),
+          icon: Icon(
+            isLeftSidebarOpen ? Icons.close : Icons.menu,
+            color: Colors.white,
+          ),
           onPressed: () {
             setState(() {
               isLeftSidebarOpen = !isLeftSidebarOpen;
@@ -49,7 +57,10 @@ class NoteAppLayoutState extends State<NoteAppLayout> {
         ),
         actions: [
           IconButton(
-            icon: Icon(isRightSidebarOpen ? Icons.close : Icons.menu),
+            icon: Icon(
+              isRightSidebarOpen ? Icons.close : Icons.menu,
+              color: Colors.white,
+            ),
             onPressed: () {
               setState(() {
                 isRightSidebarOpen = !isRightSidebarOpen;
@@ -57,7 +68,7 @@ class NoteAppLayoutState extends State<NoteAppLayout> {
             },
           ),
           IconButton(
-            icon: const Icon(Icons.save),
+            icon: const Icon(Icons.save, color: Colors.white),
             onPressed: () async {
               await fileService.saveFile(_textController.text);
               setState(() {});
@@ -73,7 +84,7 @@ class NoteAppLayoutState extends State<NoteAppLayout> {
                 return const SizedBox.shrink();
               }
               return IconButton(
-                icon: const Icon(Icons.login),
+                icon: const Icon(Icons.login, color: Colors.white),
                 onPressed: _openAuthPopup,
               );
             },
@@ -94,7 +105,13 @@ class NoteAppLayoutState extends State<NoteAppLayout> {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       width: 250,
-      color: Theme.of(context).colorScheme.secondary,
+      decoration: BoxDecoration(
+        color: Colors.grey.shade800,
+        borderRadius: const BorderRadius.only(
+          topRight: Radius.circular(12),
+          bottomRight: Radius.circular(12),
+        ),
+      ),
       child: Column(
         children: [
           GestureDetector(
@@ -110,9 +127,10 @@ class NoteAppLayoutState extends State<NoteAppLayout> {
               child: Text(
                 displayDirectoryName,
                 style: const TextStyle(
-                    color: Colors.green,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold),
+                  color: Colors.tealAccent,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
           ),
@@ -136,7 +154,7 @@ class NoteAppLayoutState extends State<NoteAppLayout> {
                     });
                   },
                   trailing: IconButton(
-                    icon: const Icon(Icons.edit, color: Colors.white),
+                    icon: const Icon(Icons.edit, color: Colors.tealAccent),
                     onPressed: () async {
                       // Handle renaming the file
                     },
@@ -148,6 +166,13 @@ class NoteAppLayoutState extends State<NoteAppLayout> {
           Padding(
             padding: const EdgeInsets.all(8.0),
             child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.teal,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
               onPressed: () async {
                 await fileService.addNewFile('Untitled.md', '');
                 setState(() {
@@ -156,14 +181,6 @@ class NoteAppLayoutState extends State<NoteAppLayout> {
               },
               child: const Text("Add File"),
             ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.close, color: Colors.white),
-            onPressed: () {
-              setState(() {
-                isLeftSidebarOpen = false;
-              });
-            },
           ),
         ],
       ),
@@ -179,53 +196,57 @@ class NoteAppLayoutState extends State<NoteAppLayout> {
             flex: 3,
             child: Padding(
               padding: const EdgeInsets.all(8.0),
-              child: Column(
-                children: [
-                  const Text(
-                    'Editor',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black26,
+                      blurRadius: 4,
+                      offset: Offset(0, 2),
+                    )
+                  ],
+                ),
+                child: TextField(
+                  controller: _textController,
+                  maxLines: null,
+                  decoration: const InputDecoration(
+                    hintText: 'Start typing your text...',
+                    border: InputBorder.none,
+                    contentPadding: EdgeInsets.all(12),
                   ),
-                  Expanded(
-                    child: TextField(
-                      controller: _textController,
-                      maxLines: null,
-                      decoration: const InputDecoration(
-                        hintText: 'Start typing your text...',
-                        border: OutlineInputBorder(),
-                      ),
-                      onChanged: (text) {
-                        setState(() {
-                          _markdownContent = text;
-                        });
-                      },
-                    ),
-                  ),
-                ],
+                  onChanged: (text) {
+                    setState(() {
+                      _markdownContent = text;
+                    });
+                  },
+                ),
               ),
             ),
           ),
-          const VerticalDivider(width: 1, color: Colors.grey),
           Expanded(
             flex: 2,
-            child: Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Column(
-                children: [
-                  const Text(
-                    'Preview',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                  ),
-                  Expanded(
-                    child: ColoredMarkdownView(
-                      content: _markdownContent,
-                      userColors: const {
-                        'user1': Colors.blue,
-                        'user2': Colors.red,
-                        'user3': Colors.green,
-                      },
-                    ),
-                  ),
+            child: Container(
+              margin: const EdgeInsets.all(8.0),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black26,
+                    blurRadius: 4,
+                    offset: Offset(0, 2),
+                  )
                 ],
+              ),
+              child: ColoredMarkdownView(
+                content: _markdownContent,
+                userColors: const {
+                  'user1': Colors.teal,
+                  'user2': Colors.orangeAccent,
+                  'user3': Colors.deepPurpleAccent,
+                },
               ),
             ),
           ),
@@ -238,32 +259,40 @@ class NoteAppLayoutState extends State<NoteAppLayout> {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       width: 250,
-      color: Theme.of(context).colorScheme.secondary,
+      decoration: BoxDecoration(
+        color: Colors.grey.shade800,
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(12),
+          bottomLeft: Radius.circular(12),
+        ),
+      ),
       child: Column(
         children: [
-          DrawerHeader(
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.secondary,
+          const DrawerHeader(
+            decoration: BoxDecoration(color: Colors.teal),
+            child: Text(
+              'Right Sidebar',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+              ),
             ),
-            child: const Text('Right Sidebar',
-                style: TextStyle(color: Colors.white)),
           ),
           ListTile(
             title: const Text('Upload All Files',
-                style: TextStyle(color: Colors.white)),
+                style: TextStyle(color: Colors.tealAccent)),
             onTap: () async {
               await fileService.uploadFileWithMetadata(
-                _currentFile?.path.split('/').last ??
-                    'Untitled.md', // Use the file's name or a default
-                _textController.text, // Use the editor's content
-                await metadataService.createMetadata(
-                    _currentFile!), // Create metadata for the file
+                _currentFile?.path.split('/').last ?? 'Untitled.md',
+                _textController.text,
+                await metadataService.createMetadata(_currentFile!),
               );
             },
           ),
           ListTile(
             title: const Text('Download All Files',
-                style: TextStyle(color: Colors.white)),
+                style: TextStyle(color: Colors.tealAccent)),
             onTap: () async {
               await fileService.downloadAllFiles();
               setState(() {
@@ -272,14 +301,6 @@ class NoteAppLayoutState extends State<NoteAppLayout> {
             },
           ),
           const Spacer(),
-          IconButton(
-            icon: const Icon(Icons.close, color: Colors.white),
-            onPressed: () {
-              setState(() {
-                isRightSidebarOpen = false;
-              });
-            },
-          ),
         ],
       ),
     );
