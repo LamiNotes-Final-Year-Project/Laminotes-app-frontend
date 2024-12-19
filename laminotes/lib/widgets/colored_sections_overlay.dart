@@ -13,7 +13,10 @@ class ColoredSectionsOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
-      painter: ColoredSectionsPainter(content: content, userColors: userColors),
+      painter: ColoredSectionsPainter(
+        content: content,
+        userColors: userColors,
+      ),
     );
   }
 }
@@ -30,18 +33,28 @@ class ColoredSectionsPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()..style = PaintingStyle.fill;
-    final lines = content.split('\n');
-    final height = size.height / lines.length;
+    final paragraphs = content.split('\n\n');
+    if (paragraphs.isEmpty) return;
 
+    final height = size.height / paragraphs.length;
     double currentY = 0;
-    for (var i = 0; i < lines.length; i++) {
-      final color = userColors.values.elementAt(i % userColors.length);
-      paint.color = color.withOpacity(0.15);
-      canvas.drawRect(Rect.fromLTWH(0, currentY, size.width, height), paint);
+
+    for (var i = 0; i < paragraphs.length; i++) {
+      if (userColors.isNotEmpty) {
+        final color = userColors.values.elementAt(i % userColors.length);
+        paint.color = color.withOpacity(0.1);
+        canvas.drawRect(
+          Rect.fromLTWH(0, currentY, size.width, height),
+          paint,
+        );
+      }
       currentY += height;
     }
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+  bool shouldRepaint(ColoredSectionsPainter oldDelegate) {
+    return content != oldDelegate.content ||
+        userColors != oldDelegate.userColors;
+  }
 }

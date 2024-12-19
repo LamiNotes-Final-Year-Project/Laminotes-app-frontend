@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+// import '../services/auth_service.dart';
 
 class TabBarViewWidget extends StatelessWidget {
   const TabBarViewWidget({super.key});
@@ -9,23 +10,17 @@ class TabBarViewWidget extends StatelessWidget {
       length: 2,
       child: Column(
         children: [
-          Container(
-            color: Colors.blueGrey[900],
-            child: const TabBar(
-              labelColor: Colors.white,
-              unselectedLabelColor: Colors.grey,
-              indicatorColor: Colors.cyanAccent,
-              tabs: [
-                Tab(icon: Icon(Icons.login), text: "Login"),
-                Tab(icon: Icon(Icons.person_add), text: "Register"),
-              ],
-            ),
+          const TabBar(
+            tabs: [
+              Tab(text: "Login"),
+              Tab(text: "Register"),
+            ],
           ),
-          const Expanded(
+          Expanded(
             child: TabBarView(
               children: [
-                _LoginTab(),
-                _RegisterTab(),
+                const LoginTab(),
+                const RegisterTab(),
               ],
             ),
           ),
@@ -35,86 +30,105 @@ class TabBarViewWidget extends StatelessWidget {
   }
 }
 
-class _LoginTab extends StatelessWidget {
-  const _LoginTab();
+class LoginTab extends StatefulWidget {
+  const LoginTab({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return _AuthForm(title: 'Login', buttonText: 'Log In');
-  }
+  LoginTabState createState() => LoginTabState();
 }
 
-class _RegisterTab extends StatelessWidget {
-  const _RegisterTab();
+class LoginTabState extends State<LoginTab> {
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  bool _isLoading = false;
 
-  @override
-  Widget build(BuildContext context) {
-    return _AuthForm(title: 'Register', buttonText: 'Sign Up');
+  void _login() async {
+    setState(() { _isLoading = true; });
+    try {
+      // final token = await loginUser(_emailController.text, _passwordController.text);
+      // ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Logged in! Token: $token")));
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Login failed: $e")));
+    } finally {
+      setState(() { _isLoading = false; });
+    }
   }
-}
-
-class _AuthForm extends StatelessWidget {
-  final String title;
-  final String buttonText;
-
-  const _AuthForm({required this.title, required this.buttonText});
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16.0),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-              color: Colors.blueGrey,
-            ),
-          ),
-          const SizedBox(height: 20),
           TextField(
-            decoration: InputDecoration(
-              labelText: 'Email',
-              filled: true,
-              fillColor: Colors.white,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
+            controller: _emailController,
+            decoration: const InputDecoration(labelText: "Email"),
           ),
-          const SizedBox(height: 15),
           TextField(
+            controller: _passwordController,
+            decoration: const InputDecoration(labelText: "Password"),
             obscureText: true,
-            decoration: InputDecoration(
-              labelText: 'Password',
-              filled: true,
-              fillColor: Colors.white,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
           ),
           const SizedBox(height: 20),
-          ElevatedButton(
-            onPressed: () {},
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.cyanAccent,
-              foregroundColor: Colors.blueGrey[900],
-              padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 20),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            child: Center(
-              child: Text(
-                buttonText,
-                style: const TextStyle(fontSize: 18),
-              ),
-            ),
+          _isLoading
+              ? const CircularProgressIndicator()
+              : ElevatedButton(
+                  onPressed: _login,
+                  child: const Text("Login"),
+                ),
+        ],
+      ),
+    );
+  }
+}
+
+class RegisterTab extends StatefulWidget {
+  const RegisterTab({super.key});
+
+  @override
+  RegisterTabState createState() => RegisterTabState();
+}
+
+class RegisterTabState extends State<RegisterTab> {
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  bool _isLoading = false;
+
+  void _register() async {
+    setState(() { _isLoading = true; });
+    try {
+      // await registerUser(_emailController.text, _passwordController.text);
+      // ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Account created!")));
+      Navigator.pop(context);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Registration failed: $e")));
+    } finally {
+      setState(() { _isLoading = false; });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        children: [
+          TextField(
+            controller: _emailController,
+            decoration: const InputDecoration(labelText: "Email"),
           ),
+          TextField(
+            controller: _passwordController,
+            decoration: const InputDecoration(labelText: "Password"),
+            obscureText: true,
+          ),
+          const SizedBox(height: 20),
+          _isLoading
+              ? const CircularProgressIndicator()
+              : ElevatedButton(
+                  onPressed: _register,
+                  child: const Text("Create Account"),
+                ),
         ],
       ),
     );
