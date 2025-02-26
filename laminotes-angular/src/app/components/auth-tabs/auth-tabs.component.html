@@ -1,0 +1,58 @@
+<div class="auth-modal">
+  <div class="auth-container">
+    <div class="auth-header">
+      <h2>{{ activeTab === 'login' ? 'Login' : 'Register' }}</h2>
+      <button class="close-button" (click)="onCloseClick()">×</button>
+    </div>
+
+    <div class="tabs">
+      <button
+        [class.active]="activeTab === 'login'"
+        (click)="changeTab('login')">Login</button>
+      <button
+        [class.active]="activeTab === 'register'"
+        (click)="changeTab('register')">Register</button>
+    </div>
+
+    <div class="auth-content">
+      <div *ngIf="errorMessage" class="error-message">
+        {{ errorMessage }}
+      </div>
+
+      <div class="form-group">
+        <label for="email">Email</label>
+        <input
+          type="email"
+          id="email"
+          [(ngModel)]="email"
+          placeholder="Enter your email">
+      </div>
+
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input
+          type="password"
+          id="password"
+          [(ngModel)]="password"
+          placeholder="Enter your password">
+      </div>
+
+      <div class="form-actions">
+        <button
+          *ngIf="activeTab === 'login'"
+          class="primary-button"
+          [disabled]="isLoading"
+          (click)="login()">
+          {{ isLoading ? 'Logging in...' : 'Login' }}
+        </button>
+        <button
+          *ngIf="activeTab === 'register'"
+          class="primary-button"
+          [disabled]="isLoading"
+          (click)="register()">
+          {{ isLoading ? 'Creating account...' : 'Create Account' }}
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

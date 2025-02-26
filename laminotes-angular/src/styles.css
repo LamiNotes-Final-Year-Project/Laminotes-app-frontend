@@ -1,0 +1,185 @@
+/* You can add global styles to this file, and also import other style files */
+/* Import Font Awesome */
+@import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css');
+
+/* Import Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600&display=swap');
+
+:root {
+  /* Base colors */
+  --primary: #FF5F1F;
+  --primary-hover: #FF7A45;
+  --secondary: #38B6FF;
+  --tertiary: #7A18F2;
+  --background: #0F111A;
+  --surface-1: #1A1C25;
+  --surface-2: #22242E;
+  --panel-inset: #161820;
+  --text-primary: #F3F3F7;
+  --text-secondary: #A0A3B1;
+  --accent-1: #00E5A0;
+  --accent-2: #FF1F6F;
+
+  /* Effects */
+  --sunken-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.3);
+  --raised-element: 0 2px 0 rgba(255, 255, 255, 0.07);
+
+  /* Sizing */
+  --radius-sm: 3px;
+  --radius-md: 6px;
+}
+
+body {
+  font-family: 'Space Grotesk', sans-serif;
+  background-color: var(--background);
+  color: var(--text-primary);
+  margin: 0;
+  padding: 0;
+  background-image:
+    linear-gradient(rgba(255, 95, 31, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 95, 31, 0.03) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  font-family: 'Roboto', sans-serif;
+  color: #212121;
+}
+
+/* Other global styles */
+a {
+  text-decoration: none;
+  color: #3a4dba;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+button {
+  font-family: 'Roboto', sans-serif;
+}
+
+/* Markdown styling */
+app-colored-markdown-view h1,
+app-colored-markdown-view h2,
+app-colored-markdown-view h3,
+app-colored-markdown-view h4,
+app-colored-markdown-view h5,
+app-colored-markdown-view h6 {
+  margin-top: 1.5rem;
+  margin-bottom: 1rem;
+  color: #FF5F1F;
+}
+
+app-colored-markdown-view h1 {
+  font-size: 1.8rem;
+}
+
+app-colored-markdown-view h2 {
+  font-size: 1.5rem;
+}
+
+app-colored-markdown-view h3 {
+  font-size: 1.3rem;
+}
+
+app-colored-markdown-view p {
+  margin-bottom: 1rem;
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+
+app-colored-markdown-view ul,
+app-colored-markdown-view ol {
+  margin-bottom: 1rem;
+  padding-left: 2rem;
+  color: var(--text-primary);
+}
+
+app-colored-markdown-view li {
+  margin-bottom: 0.5rem;
+}
+
+app-colored-markdown-view code {
+  font-family: 'Space Grotesk', monospace;
+  background-color: #22242E;
+  padding: 0.2rem 0.4rem;
+  border-radius: 3px;
+  color: #38B6FF;
+}
+
+app-colored-markdown-view pre {
+  background-color: #22242E;
+  padding: 1rem;
+  border-radius: 4px;
+  overflow-x: auto;
+  margin-bottom: 1rem;
+  border: 1px solid rgba(255, 95, 31, 0.15);
+}
+
+app-colored-markdown-view pre code {
+  background-color: transparent;
+  padding: 0;
+  color: #F3F3F7;
+}
+
+app-colored-markdown-view blockquote {
+  border-left: 4px solid #FF5F1F;
+  padding-left: 1rem;
+  color: #A0A3B1;
+  margin-left: 0;
+  margin-right: 0;
+  margin-bottom: 1rem;
+  background-color: rgba(255, 95, 31, 0.05);
+  padding: 0.5rem 1rem;
+  border-radius: 0 3px 3px 0;
+}
+
+app-colored-markdown-view table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-bottom: 1rem;
+}
+
+app-colored-markdown-view th,
+app-colored-markdown-view td {
+  border: 1px solid #22242E;
+  padding: 0.5rem;
+}
+
+app-colored-markdown-view th {
+  background-color: #22242E;
+  font-weight: bold;
+  color: #FF5F1F;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #161820;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #22242E;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #FF5F1F;
+}

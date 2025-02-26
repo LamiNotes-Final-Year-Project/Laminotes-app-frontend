@@ -1,0 +1,260 @@
+<div class="app-container">
+  <!-- Command bar -->
+  <div class="command-bar">
+    <div class="app-brand">
+      <div class="logo-container">
+        <i class="fas fa-pen-nib"></i>
+      </div>
+      <span class="app-name">LAMINOTES</span>
+    </div>
+
+    <div class="command-controls">
+      <button class="command-button" (click)="saveCurrentFile()">
+        <i class="fas fa-save"></i>
+        <span>SAVE</span>
+      </button>
+      <button class="command-button">
+        <i class="fas fa-share-alt"></i>
+        <span>SHARE</span>
+      </button>
+      <button class="command-button" (click)="toggleRightSidebar()">
+        <i class="fas fa-sliders-h"></i>
+        <span>OPTIONS</span>
+      </button>
+      <button class="command-button" *ngIf="(isAuthenticated() | async) === false" (click)="openAuthModal()">
+        <i class="fas fa-user-circle"></i>
+        <span>LOGIN</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- iOS-style Tab Bar -->
+  <div class="ios-tab-container">
+    <div class="ios-tab-bar">
+      <div class="tab-pill">
+        <div class="ios-tab" [class.active]="currentTabView === 'recents'" (click)="switchTabView('recents')">
+          <i class="fas fa-clock"></i>
+          <span>Recents</span>
+        </div>
+        <div class="ios-tab" [class.active]="currentTabView === 'notes'" (click)="switchTabView('notes')">
+          <i class="fas fa-file-alt"></i>
+          <span>Notes</span>
+        </div>
+        <div class="ios-tab" [class.active]="currentTabView === 'shared'" (click)="switchTabView('shared')">
+          <i class="fas fa-users"></i>
+          <span>Shared</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Blue highlight animation indicator -->
+    <div class="tab-indicator" [ngClass]="currentTabView"></div>
+  </div>
+
+  <!-- Main content area with different views -->
+  <div [ngSwitch]="currentTabView" class="main-content">
+
+    <!-- RECENTS VIEW -->
+    <div *ngSwitchCase="'recents'" class="recents-view">
+      <h2 class="view-title">Recent Notes</h2>
+
+      <div class="recent-grid">
+        <div *ngFor="let file of recentFiles" class="recent-card" (click)="openFileAndSwitchToNotes(file)">
+          <div class="card-preview">
+            <i class="fas fa-file-alt"></i>
+          </div>
+          <div class="card-info">
+            <h3 class="card-title">{{ file.name }}</h3>
+            <p class="card-meta">Last edited {{ getRelativeTime(file.lastModified) }}</p>
+          </div>
+        </div>
+
+        <div *ngIf="recentFiles.length === 0" class="empty-state">
+          <i class="fas fa-clock"></i>
+          <p>No recent notes</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- NOTES VIEW (MAIN EDITOR) -->
+    <div *ngSwitchCase="'notes'" class="workspace">
+      <!-- File navigator -->
+      <div class="files-panel" [class.collapsed]="!isLeftSidebarOpen">
+        <div class="panel-header">
+          <div class="panel-title">
+            <button class="toggle-button" (click)="toggleLeftSidebar()">
+              <i class="fas" [ngClass]="{'fa-chevron-left': isLeftSidebarOpen, 'fa-chevron-right': !isLeftSidebarOpen}"></i>
+            </button>
+            <h3>{{ fileService.getCurrentDirectoryName() }}</h3>
+          </div>
+          <div class="header-actions">
+            <button class="icon-action" title="New Folder">
+              <i class="fas fa-folder-plus"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="file-list">
+          <div *ngFor="let file of allFiles; let i = index"
+               class="file-item"
+               [class.active]="file === fileService.currentFile">
+            <i class="fas fa-file-alt file-icon"></i>
+            <span class="file-name" (click)="openFile(file); activeTabIndex = i">{{ file.name }}</span>
+            <div class="file-actions">
+              <button class="micro-button" (click)="renameFile(file)">
+                <i class="fas fa-pencil-alt"></i>
+              </button>
+              <button class="micro-button" title="Delete">
+                <i class="fas fa-trash"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel-footer">
+          <button class="add-button" (click)="addNewFile()">
+            <i class="fas fa-plus"></i>
+            <span>NEW NOTE</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Editor workspace -->
+      <div class="editor-workspace" [ngClass]="viewMode">
+        <div class="editor-panel" [ngClass]="{'full-width': viewMode === 'editor'}">
+          <div class="panel-header">
+            <div class="panel-title">
+              <h3>EDITOR</h3>
+            </div>
+            <div class="editor-tools">
+              <button class="micro-button">
+                <i class="fas fa-heading"></i>
+              </button>
+              <button class="micro-button">
+                <i class="fas fa-bold"></i>
+              </button>
+              <button class="micro-button">
+                <i class="fas fa-italic"></i>
+              </button>
+              <button class="micro-button">
+                <i class="fas fa-list"></i>
+              </button>
+            </div>
+          </div>
+          <div class="editor-container">
+            <textarea
+              class="editor"
+              [value]="markdownContent"
+              (input)="onEditorChange($event)"
+              placeholder="// Start typing your markdown here..."></textarea>
+          </div>
+        </div>
+
+        <div class="preview-panel" [ngClass]="{'full-width': viewMode === 'preview'}">
+          <div class="panel-header">
+            <div class="panel-title">
+              <h3>PREVIEW</h3>
+            </div>
+            <div class="preview-tools">
+              <button class="micro-button">
+                <i class="fas fa-expand"></i>
+              </button>
+            </div>
+          </div>
+          <div class="preview-container">
+            <app-colored-markdown-view
+              [content]="markdownContent"
+              [userColors]="userColors">
+            </app-colored-markdown-view>
+          </div>
+        </div>
+      </div>
+
+      <!-- Options sidebar -->
+      <div class="options-panel" *ngIf="isRightSidebarOpen">
+        <div class="panel-header">
+          <div class="panel-title">
+            <h3>OPTIONS</h3>
+          </div>
+          <button class="icon-action" (click)="toggleRightSidebar()">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+
+        <div class="options-content">
+          <div class="option-group">
+            <h4>APPEARANCE</h4>
+            <div class="option-row">
+              <span>Theme</span>
+              <div class="toggle-switch">
+                <span>DARK</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="option-group">
+            <h4>SYNC</h4>
+            <button class="action-button">
+              <i class="fas fa-cloud-upload-alt"></i>
+              <span>UPLOAD ALL</span>
+            </button>
+            <button class="action-button">
+              <i class="fas fa-cloud-download-alt"></i>
+              <span>DOWNLOAD ALL</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SHARED VIEW -->
+    <div *ngSwitchCase="'shared'" class="shared-view">
+      <h2 class="view-title">Shared with You</h2>
+
+      <div class="organizations-section">
+        <h3 class="section-header">Your Organizations</h3>
+
+        <div class="org-list">
+          <div *ngFor="let org of organizations" class="org-card">
+            <div class="org-avatar" [style.background-color]="org.color">
+              {{ getOrgInitials(org.name) }}
+            </div>
+            <div class="org-info">
+              <h4>{{ org.name }}</h4>
+              <p>{{ org.memberCount }} members</p>
+            </div>
+          </div>
+
+          <div *ngIf="organizations.length === 0" class="empty-state">
+            <i class="fas fa-users"></i>
+            <p>No organizations</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="shared-files-section">
+        <h3 class="section-header">Shared Notes</h3>
+
+        <div class="shared-files-list">
+          <div *ngFor="let file of sharedFiles" class="shared-file-item">
+            <i class="fas fa-file-alt"></i>
+            <span class="file-name">{{ file.name }}</span>
+            <span class="shared-by">Shared by {{ file.owner }}</span>
+          </div>
+
+          <div *ngIf="sharedFiles.length === 0" class="empty-state">
+            <i class="fas fa-share-alt"></i>
+            <p>No shared notes</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Auth modal dialog -->
+  <app-auth-tabs
+    *ngIf="isAuthModalOpen"
+    (success)="closeAuthModal()"
+    (close)="closeAuthModal()">
+  </app-auth-tabs>
+</div>

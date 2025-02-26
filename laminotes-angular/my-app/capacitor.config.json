@@ -1,0 +1,10 @@
+{
+  "appId": "com.example.app",
+  "appName": "Laminotes",
+  "webDir": "dist",
+  "plugins": {
+    "SplashScreen": {
+      "launchAutoHide": false
+    }
+  }
+}
