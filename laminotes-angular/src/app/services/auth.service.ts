@@ -1,13 +1,23 @@
 import { Injectable } from '@angular/core';
-import { Observable, of } from 'rxjs';
+import { Observable, of, throwError, BehaviorSubject } from 'rxjs';
+import { catchError, tap, map } from 'rxjs/operators';
+import { ApiService } from './api.service';
 
 @Injectable({
   providedIn: 'root'
 })
 export class AuthService {
   private readonly AUTH_TOKEN_KEY = 'auth_token';
+  private authState = new BehaviorSubject<boolean>(this.hasToken());
 
-  constructor() {}
+  constructor(private apiService: ApiService) {
+    // Initialize the auth state based on existing token
+    this.authState.next(this.hasToken());
+  }
+
+  private hasToken(): boolean {
+    return localStorage.getItem(this.AUTH_TOKEN_KEY) !== null;
+  }
 
   getToken(): Observable<string | null> {
     return of(localStorage.getItem(this.AUTH_TOKEN_KEY));
@@ -15,32 +25,40 @@ export class AuthService {
 
   saveToken(token: string): Observable<void> {
     localStorage.setItem(this.AUTH_TOKEN_KEY, token);
+    this.authState.next(true);
     return of(undefined);
   }
 
   deleteToken(): Observable<void> {
     localStorage.removeItem(this.AUTH_TOKEN_KEY);
+    this.authState.next(false);
     return of(undefined);
   }
 
   login(email: string, password: string): Observable<string> {
-    // For browser-only demo, just create a mock token
-    const token = `mock_token_${Date.now()}`;
-    this.saveToken(token);
-    return of(token);
+    return this.apiService.loginUser(email, password).pipe(
+      tap(token => this.saveToken(token)),
+      catchError(error => {
+        console.error('Login error:', error);
+        return throwError(() => error);
+      })
+    );
   }
 
   register(email: string, password: string): Observable<void> {
-    // For browser-only demo, just log the registration
-    console.log(`Registered user: ${email}`);
-    return of(undefined);
+    return this.apiService.registerUser(email, password);
   }
 
   isAuthenticated(): Observable<boolean> {
-    return of(localStorage.getItem(this.AUTH_TOKEN_KEY) !== null);
+    return this.authState.asObservable();
   }
 
   logout(): Observable<void> {
     return this.deleteToken();
+  }
+
+  // Get the current auth state value without subscribing
+  get isLoggedIn(): boolean {
+    return this.authState.value;
   }
 }

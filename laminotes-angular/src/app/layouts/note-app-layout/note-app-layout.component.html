@@ -3,9 +3,18 @@
   <div class="command-bar">
     <div class="app-brand">
       <div class="logo-container">
-        <i class="fas fa-pen-nib"></i>
+<!--   <img [src]="'assets/images/img.png'" [alt]="'Laminotes Logo'" [height]="40" [width]="40">-->
+         <i class="fas fa-pen-nib"></i>
       </div>
       <span class="app-name">LAMINOTES</span>
+    </div>
+
+    <!-- Status message and loading indicator -->
+    <div class="status-container" *ngIf="statusMessage || isLoading">
+      <div class="status-spinner" *ngIf="isLoading">
+          <i class="fas fa-spinner fa-spin"></i>
+      </div>
+      <div class="status-message">{{ statusMessage }}</div>
     </div>
 
     <div class="command-controls">
@@ -47,7 +56,7 @@
       </div>
     </div>
 
-    <!-- Blue highlight animation indicator -->
+    <!-- highlight animation indicator -->
     <div class="tab-indicator" [ngClass]="currentTabView"></div>
   </div>
 
@@ -109,6 +118,11 @@
               </button>
             </div>
           </div>
+
+          <div *ngIf="allFiles.length === 0" class="empty-state">
+            <i class="fas fa-file-alt"></i>
+            <p>No notes yet. Click the "NEW NOTE" button below to create one.</p>
+          </div>
         </div>
 
         <div class="panel-footer">
@@ -127,17 +141,14 @@
               <h3>EDITOR</h3>
             </div>
             <div class="editor-tools">
-              <button class="micro-button">
-                <i class="fas fa-heading"></i>
+              <button class="micro-button" (click)="changeViewMode('editor')" [class.active]="viewMode === 'editor'">
+                <i class="fas fa-edit"></i>
               </button>
-              <button class="micro-button">
-                <i class="fas fa-bold"></i>
+              <button class="micro-button" (click)="changeViewMode('split')" [class.active]="viewMode === 'split'">
+                <i class="fas fa-columns"></i>
               </button>
-              <button class="micro-button">
-                <i class="fas fa-italic"></i>
-              </button>
-              <button class="micro-button">
-                <i class="fas fa-list"></i>
+              <button class="micro-button" (click)="changeViewMode('preview')" [class.active]="viewMode === 'preview'">
+                <i class="fas fa-eye"></i>
               </button>
             </div>
           </div>
@@ -194,13 +205,17 @@
 
           <div class="option-group">
             <h4>SYNC</h4>
-            <button class="action-button">
+            <button class="action-button" (click)="uploadAllFiles()" [disabled]="isLoading">
               <i class="fas fa-cloud-upload-alt"></i>
               <span>UPLOAD ALL</span>
             </button>
-            <button class="action-button">
+            <button class="action-button" (click)="downloadAllFiles()" [disabled]="isLoading">
               <i class="fas fa-cloud-download-alt"></i>
               <span>DOWNLOAD ALL</span>
+            </button>
+            <button class="action-button" *ngIf="(isAuthenticated() | async)" (click)="logout()">
+              <i class="fas fa-sign-out-alt"></i>
+              <span>LOGOUT</span>
             </button>
           </div>
         </div>
@@ -257,4 +272,11 @@
     (success)="closeAuthModal()"
     (close)="closeAuthModal()">
   </app-auth-tabs>
+
+  <!-- Notification component -->
+  <app-status-notification
+    *ngIf="notification"
+    [message]="notification.message"
+    [type]="notification.type">
+  </app-status-notification>
 </div>

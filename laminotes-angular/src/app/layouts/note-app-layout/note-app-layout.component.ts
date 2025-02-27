@@ -1,14 +1,17 @@
-import { Component, OnInit } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, OnInit, OnDestroy } from '@angular/core';
+import {CommonModule, NgOptimizedImage} from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Observable, of } from 'rxjs';
-import { delay } from 'rxjs/operators';
+import { Observable, Subscription } from 'rxjs';
+import { tap, catchError } from 'rxjs/operators';
 
 import { FileService, FileInfo } from '../../services/file.service';
 import { AuthService } from '../../services/auth.service';
+import { MetadataService } from '../../services/metadata.service';
+import { NotificationService } from '../../services/notification.service';
 
 import { ColoredMarkdownViewComponent } from '../../components/colored-markdown-view/colored-markdown-view.component';
 import { AuthTabsComponent } from '../../components/auth-tabs/auth-tabs.component';
+import { AppStatusNotificationComponent } from '../../components/app-status-notification/app-status-notification.component';
 
 @Component({
   selector: 'app-note-app-layout',
@@ -17,12 +20,13 @@ import { AuthTabsComponent } from '../../components/auth-tabs/auth-tabs.componen
     CommonModule,
     FormsModule,
     ColoredMarkdownViewComponent,
-    AuthTabsComponent
+    AuthTabsComponent,
+    AppStatusNotificationComponent,
   ],
   templateUrl: './note-app-layout.component.html',
   styleUrls: ['./note-app-layout.component.css']
 })
-export class NoteAppLayoutComponent implements OnInit {
+export class NoteAppLayoutComponent implements OnInit, OnDestroy {
   markdownContent: string = '';
   isLeftSidebarOpen: boolean = true;
   isRightSidebarOpen: boolean = false;
@@ -36,7 +40,7 @@ export class NoteAppLayoutComponent implements OnInit {
   allFiles: FileInfo[] = [];
   sharedFiles: FileInfo[] = [];
 
-  // Mock organizations
+  // Mock organizations TODO: implement full organisation sync
   organizations: any[] = [
     { name: 'Design Team', memberCount: 8, color: '#3498db' },
     { name: 'Marketing', memberCount: 12, color: '#e74c3c' },
@@ -50,19 +54,43 @@ export class NoteAppLayoutComponent implements OnInit {
     'user3': '#2ecc71'
   };
 
+  // Status messages for operations
+  statusMessage: string = '';
+  isLoading: boolean = false;
+
+  // Notification data
+  notification: { message: string, type: 'success' | 'error' | 'info' } | null = null;
+  private notificationSubscription: Subscription;
+
   constructor(
     public fileService: FileService,
-    private authService: AuthService
-  ) {}
+    private authService: AuthService,
+    private metadataService: MetadataService,
+    private notificationService: NotificationService
+  ) {
+    this.notificationSubscription = this.notificationService.notifications$.subscribe(
+      notification => {
+        this.notification = notification;
+      }
+    );
+  }
 
   ngOnInit(): void {
-    // Check if there are any files already, if not add a welcome file
+    // Checks if there are any files already
+    this.fileService.refreshFileList();
+
     if (this.fileService.filesInDirectory.length > 0) {
       this.openFile(this.fileService.filesInDirectory[0]);
     }
 
     // Initialize the files for each tab view
     this.loadAllNotes(); // Load immediately since 'notes' is the default tab
+  }
+
+  ngOnDestroy(): void {
+    if (this.notificationSubscription) {
+      this.notificationSubscription.unsubscribe();
+    }
   }
 
   toggleLeftSidebar(): void {
@@ -82,31 +110,60 @@ export class NoteAppLayoutComponent implements OnInit {
   }
 
   selectDirectory(): void {
-    // For browser-only version, we'll just refresh the file list
-    this.fileService.refreshFileList();
+    this.fileService.selectDirectory().subscribe(() => {
+      this.fileService.refreshFileList();
+      this.allFiles = this.fileService.filesInDirectory;
+    });
   }
 
   openFile(file: FileInfo): void {
+    this.isLoading = true;
+    this.statusMessage = `Opening ${file.name}...`;
+
     this.fileService.openFile(file).subscribe({
       next: (content) => {
         this.markdownContent = content;
+        this.isLoading = false;
+        this.statusMessage = '';
+        this.notificationService.info(`Opened ${file.name}`);
       },
-      error: (error) => console.error('Error opening file:', error)
+      error: (error) => {
+        console.error('Error opening file:', error);
+        this.isLoading = false;
+        this.statusMessage = '';
+        this.notificationService.error(`Error opening file: ${error.message}`);
+      }
     });
   }
 
   saveCurrentFile(): void {
-    if (this.markdownContent) {
-      this.fileService.saveFile(this.markdownContent).subscribe({
-        next: () => {
-          console.log('File saved successfully');
-        },
-        error: (error) => console.error('Error saving file:', error)
-      });
+    if (!this.markdownContent) {
+      this.notificationService.info('Nothing to save');
+      return;
     }
+
+    this.isLoading = true;
+    this.statusMessage = 'Saving file...';
+
+    this.fileService.saveFile(this.markdownContent).subscribe({
+      next: () => {
+        this.isLoading = false;
+        this.statusMessage = '';
+        this.notificationService.success('File saved successfully');
+      },
+      error: (error) => {
+        console.error('Error saving file:', error);
+        this.isLoading = false;
+        this.statusMessage = '';
+        this.notificationService.error(`Error saving file: ${error.message}`);
+      }
+    });
   }
 
   addNewFile(): void {
+    this.isLoading = true;
+    this.statusMessage = 'Creating new file...';
+
     this.fileService.addNewFile('Untitled.md', '').subscribe({
       next: () => {
         // Refresh list and open the new file
@@ -119,24 +176,43 @@ export class NoteAppLayoutComponent implements OnInit {
 
         // Also update allFiles for the Notes tab
         this.loadAllNotes();
+
+        this.isLoading = false;
+        this.statusMessage = '';
+        this.notificationService.success('New file created');
       },
-      error: (error) => console.error('Error creating new file:', error)
+      error: (error) => {
+        console.error('Error creating new file:', error);
+        this.isLoading = false;
+        this.statusMessage = '';
+        this.notificationService.error(`Error creating file: ${error.message}`);
+      }
     });
   }
 
   renameFile(file: FileInfo): void {
-    // This would typically have a dialog to get the new name
-    // For simplicity, we're using a prompt here
     const newName = prompt('Enter new file name:', file.name);
 
     if (newName && newName !== file.name) {
+      this.isLoading = true;
+      this.statusMessage = `Renaming file to ${newName}...`;
+
       this.fileService.renameFile(file, newName).subscribe({
         next: () => {
           this.fileService.refreshFileList();
           // Also update allFiles for the Notes tab
           this.loadAllNotes();
+
+          this.isLoading = false;
+          this.statusMessage = '';
+          this.notificationService.success(`File renamed to ${newName}`);
         },
-        error: (error) => console.error('Error renaming file:', error)
+        error: (error) => {
+          console.error('Error renaming file:', error);
+          this.isLoading = false;
+          this.statusMessage = '';
+          this.notificationService.error(`Error renaming file: ${error.message}`);
+        }
       });
     }
   }
@@ -168,8 +244,7 @@ export class NoteAppLayoutComponent implements OnInit {
         this.activeTabIndex--;
       }
 
-      // Here you would also need to remove the file from filesInDirectory
-      // and potentially save/delete it depending on your app requirements
+     // TODO: implement file saving and deleting
     }
   }
 
@@ -204,18 +279,14 @@ export class NoteAppLayoutComponent implements OnInit {
 
   // Methods for loading different types of notes
   private loadRecentFiles(): void {
-    // Mock data for recent files - replace with actual implementation
     this.fileService.loadRecentFiles().subscribe({
       next: (files) => {
         this.recentFiles = files;
-        // Add mock lastModified values for demo purposes
-        this.recentFiles.forEach(file => {
-          if (!file.lastModified) {
-            file.lastModified = Date.now() - Math.floor(Math.random() * 7 * 24 * 60 * 60 * 1000);
-          }
-        });
       },
-      error: (error) => console.error('Error loading recent files:', error)
+      error: (error) => {
+        console.error('Error loading recent files:', error);
+        this.notificationService.error(`Error loading recent files: ${error.message}`);
+      }
     });
   }
 
@@ -225,19 +296,14 @@ export class NoteAppLayoutComponent implements OnInit {
   }
 
   private loadSharedNotes(): void {
-    // Mock data for shared files - replace with actual implementation
     this.fileService.loadSharedFiles().subscribe({
       next: (files) => {
         this.sharedFiles = files;
-        // Add mock owner info for demo purposes
-        this.sharedFiles.forEach(file => {
-          if (!file.owner) {
-            const owners = ['John Doe', 'Jane Smith', 'Alex Johnson'];
-            file.owner = owners[Math.floor(Math.random() * owners.length)];
-          }
-        });
       },
-      error: (error) => console.error('Error loading shared files:', error)
+      error: (error) => {
+        console.error('Error loading shared files:', error);
+        this.notificationService.error(`Error loading shared files: ${error.message}`);
+      }
     });
   }
 
@@ -271,5 +337,53 @@ export class NoteAppLayoutComponent implements OnInit {
   openFileAndSwitchToNotes(file: FileInfo): void {
     this.openFile(file);
     this.switchTabView('notes');
+  }
+
+  // Operations for the Options panel
+  uploadAllFiles(): void {
+    this.isLoading = true;
+    this.statusMessage = 'Uploading all files...';
+
+    this.fileService.uploadAllFiles().subscribe({
+      next: () => {
+        this.isLoading = false;
+        this.statusMessage = '';
+        this.notificationService.success('All files uploaded successfully');
+      },
+      error: (error) => {
+        console.error('Error uploading files:', error);
+        this.isLoading = false;
+        this.statusMessage = '';
+        this.notificationService.error(`Error uploading files: ${error.message}`);
+      }
+    });
+  }
+
+  downloadAllFiles(): void {
+    this.isLoading = true;
+    this.statusMessage = 'Downloading all files...';
+
+    this.fileService.downloadAllFiles().subscribe({
+      next: () => {
+        this.isLoading = false;
+        this.statusMessage = '';
+        this.loadAllNotes(); // Refresh the files list
+        this.notificationService.success('All files downloaded successfully');
+      },
+      error: (error) => {
+        console.error('Error downloading files:', error);
+        this.isLoading = false;
+        this.statusMessage = '';
+        this.notificationService.error(`Error downloading files: ${error.message}`);
+      }
+    });
+  }
+
+  logout(): void {
+    this.authService.logout().subscribe({
+      next: () => {
+        this.notificationService.info('Logged out successfully');
+      }
+    });
   }
 }
