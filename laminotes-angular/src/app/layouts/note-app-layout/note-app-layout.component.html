@@ -10,13 +10,13 @@
     </div>
 
     <!-- Status message and loading indicator -->
+    <app-team-selector *ngIf="isAuthenticated() | async"></app-team-selector>
     <div class="status-container" *ngIf="statusMessage || isLoading">
       <div class="status-spinner" *ngIf="isLoading">
           <i class="fas fa-spinner fa-spin"></i>
       </div>
       <div class="status-message">{{ statusMessage }}</div>
     </div>
-
     <div class="command-controls">
       <button class="command-button" (click)="saveCurrentFile()">
         <i class="fas fa-save"></i>
@@ -33,6 +33,10 @@
       <button class="command-button" *ngIf="(isAuthenticated() | async) === false" (click)="openAuthModal()">
         <i class="fas fa-user-circle"></i>
         <span>LOGIN</span>
+      </button>
+      <button class="command-button" (click)="toggleDebugPanel()">
+        <i class="fas fa-bug"></i>
+        <span>DEBUG</span>
       </button>
     </div>
   </div>
@@ -279,4 +283,6 @@
     [message]="notification.message"
     [type]="notification.type">
   </app-status-notification>
+
+  <app-debug-panel *ngIf="isDebugPanelOpen" (close)="toggleDebugPanel()"></app-debug-panel>
 </div>

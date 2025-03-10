@@ -12,6 +12,8 @@ import { NotificationService } from '../../services/notification.service';
 import { ColoredMarkdownViewComponent } from '../../components/colored-markdown-view/colored-markdown-view.component';
 import { AuthTabsComponent } from '../../components/auth-tabs/auth-tabs.component';
 import { AppStatusNotificationComponent } from '../../components/app-status-notification/app-status-notification.component';
+import { DebugPanelComponent } from '../../components/debug-panel/debug-panel.component';
+import {TeamSelectorComponent} from '../../components/team-selector/team-selector.component';
 
 @Component({
   selector: 'app-note-app-layout',
@@ -22,6 +24,8 @@ import { AppStatusNotificationComponent } from '../../components/app-status-noti
     ColoredMarkdownViewComponent,
     AuthTabsComponent,
     AppStatusNotificationComponent,
+    DebugPanelComponent,
+    TeamSelectorComponent,
   ],
   templateUrl: './note-app-layout.component.html',
   styleUrls: ['./note-app-layout.component.css']
@@ -31,6 +35,7 @@ export class NoteAppLayoutComponent implements OnInit, OnDestroy {
   isLeftSidebarOpen: boolean = true;
   isRightSidebarOpen: boolean = false;
   isAuthModalOpen: boolean = false;
+  isDebugPanelOpen: boolean = false;
   activeTabIndex: number = 0;
   viewMode: 'split' | 'editor' | 'preview' = 'split';
 
@@ -173,10 +178,8 @@ export class NoteAppLayoutComponent implements OnInit, OnDestroy {
 
         // Set the new file as the active tab
         this.activeTabIndex = this.fileService.filesInDirectory.length - 1;
-
-        // Also update allFiles for the Notes tab
+        // Update allFiles for the Notes tab
         this.loadAllNotes();
-
         this.isLoading = false;
         this.statusMessage = '';
         this.notificationService.success('New file created');
@@ -377,6 +380,10 @@ export class NoteAppLayoutComponent implements OnInit, OnDestroy {
         this.notificationService.error(`Error downloading files: ${error.message}`);
       }
     });
+  }
+
+  toggleDebugPanel(): void {
+    this.isDebugPanelOpen = !this.isDebugPanelOpen;
   }
 
   logout(): void {
