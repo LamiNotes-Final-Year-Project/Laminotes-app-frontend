@@ -3,7 +3,7 @@ import { BehaviorSubject, Observable } from 'rxjs';
 
 export interface Notification {
   message: string;
-  type: 'success' | 'error' | 'info';
+  type: 'success' | 'error' | 'info' | 'warning';
   timeout?: number;
 }
 
@@ -33,6 +33,11 @@ export class NotificationService {
   // Show an info notification
   info(message: string, timeout: number = 5000): void {
     this.show({ message, type: 'info', timeout });
+  }
+
+  // Show a warning notification
+  warning(message: string, timeout: number = 5000): void {
+    this.show({ message, type: 'warning', timeout });
   }
 
   // Show a notification

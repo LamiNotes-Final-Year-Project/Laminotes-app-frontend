@@ -1,8 +1,8 @@
 // src/app/services/team.service.ts
 import { Injectable } from '@angular/core';
 import { BehaviorSubject, Observable, of } from 'rxjs';
-import { catchError, switchMap, tap } from 'rxjs/operators';
-import { Team } from '../models/team.model';
+import { catchError, switchMap, tap, map } from 'rxjs/operators';
+import { Team, TeamRole } from '../models/team.model';
 import { ApiService } from './api.service';
 import { AuthService } from './auth.service';
 import { NotificationService } from './notification.service';
@@ -115,5 +115,51 @@ export class TeamService {
         return of([]);
       })
     );
+  }
+
+  /**
+   * Get the user's role in a specific team
+   * @param teamId The ID of the team
+   */
+  getUserRoleInTeam(teamId: string): Observable<TeamRole> {
+    if (!teamId) {
+      return of(TeamRole.Viewer); // Default role if no team
+    }
+
+    // This would normally make a backend API call to get the user's role
+    // For now, check if the user is the owner of the team
+    return this.apiService.getUserTeams().pipe(
+      map(teams => {
+        const team = teams.find(t => t.id === teamId);
+
+        if (!team) {
+          return TeamRole.Viewer; // Default if team not found
+        }
+
+        // Check if user is owner
+        return team.owner_id === this.getCurrentUserId() ?
+          TeamRole.Owner : TeamRole.Contributor;
+      }),
+      catchError(error => {
+        console.error('Error fetching team role:', error);
+        return of(TeamRole.Viewer); // Default on error
+      })
+    );
+  }
+
+  // Helper method to get current user ID
+  private getCurrentUserId(): string {
+    // This is a placeholder - in a real app, you'd get this from AuthService
+    // You could also store this after successful login
+    const userJson = localStorage.getItem('current_user');
+    if (userJson) {
+      try {
+        const user = JSON.parse(userJson);
+        return user.user_id || '';
+      } catch (e) {
+        return '';
+      }
+    }
+    return '';
   }
 }

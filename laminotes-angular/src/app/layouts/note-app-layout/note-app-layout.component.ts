@@ -1,19 +1,30 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
-import {CommonModule, NgOptimizedImage} from '@angular/common';
-import { FormsModule } from '@angular/forms';
-import { Observable, Subscription } from 'rxjs';
-import { tap, catchError } from 'rxjs/operators';
+import {Component, OnDestroy, OnInit} from '@angular/core';
+import {CommonModule} from '@angular/common';
+import {FormsModule} from '@angular/forms';
+import {Observable, Subscription} from 'rxjs';
 
-import { FileService, FileInfo } from '../../services/file.service';
-import { AuthService } from '../../services/auth.service';
-import { MetadataService } from '../../services/metadata.service';
-import { NotificationService } from '../../services/notification.service';
+import {FileInfo, FileService} from '../../services/file.service';
+import {AuthService} from '../../services/auth.service';
+import {MetadataService} from '../../services/metadata.service';
+import {NotificationService} from '../../services/notification.service';
 
-import { ColoredMarkdownViewComponent } from '../../components/colored-markdown-view/colored-markdown-view.component';
-import { AuthTabsComponent } from '../../components/auth-tabs/auth-tabs.component';
-import { AppStatusNotificationComponent } from '../../components/app-status-notification/app-status-notification.component';
-import { DebugPanelComponent } from '../../components/debug-panel/debug-panel.component';
+import {ColoredMarkdownViewComponent} from '../../components/colored-markdown-view/colored-markdown-view.component';
+import {AuthTabsComponent} from '../../components/auth-tabs/auth-tabs.component';
+import {
+  AppStatusNotificationComponent
+} from '../../components/app-status-notification/app-status-notification.component';
+import {DebugPanelComponent} from '../../components/debug-panel/debug-panel.component';
 import {TeamSelectorComponent} from '../../components/team-selector/team-selector.component';
+import {TeamRoleComponent} from '../../components/team-role/team-role.component';
+import {TeamInvitationsComponent} from '../../components/team-invitations/team-invitations.component';
+import {
+  ConflictData,
+  ConflictResolutionComponent
+} from '../../components/conflict-resolution/conflict-resolution.component';
+import {Team, TeamRole} from '../../models/team.model';
+import {VersionControlService} from '../../services/version-control.service';
+import {TeamService} from '../../services/team.service';
+
 
 @Component({
   selector: 'app-note-app-layout',
@@ -26,6 +37,9 @@ import {TeamSelectorComponent} from '../../components/team-selector/team-selecto
     AppStatusNotificationComponent,
     DebugPanelComponent,
     TeamSelectorComponent,
+    TeamRoleComponent,
+    TeamInvitationsComponent,
+    ConflictResolutionComponent,
   ],
   templateUrl: './note-app-layout.component.html',
   styleUrls: ['./note-app-layout.component.css']
@@ -38,6 +52,16 @@ export class NoteAppLayoutComponent implements OnInit, OnDestroy {
   isDebugPanelOpen: boolean = false;
   activeTabIndex: number = 0;
   viewMode: 'split' | 'editor' | 'preview' = 'split';
+
+  // Team-related properties
+  currentTeam: Team | null = null;
+  currentTeamRole: TeamRole = TeamRole.Viewer; // default to viewer
+  showTeamManagement: boolean = false;
+  isTeamOwner: boolean = false;
+
+  // Conflict resolution
+  conflictData: ConflictData | null = null;
+
 
   // Tab-specific properties
   currentTabView: 'recents' | 'notes' | 'shared' = 'notes';
@@ -71,11 +95,13 @@ export class NoteAppLayoutComponent implements OnInit, OnDestroy {
     public fileService: FileService,
     private authService: AuthService,
     private metadataService: MetadataService,
-    private notificationService: NotificationService
+    private notificationService: NotificationService,
+    private teamService: TeamService,
+    private versionControl: VersionControlService,
   ) {
     this.notificationSubscription = this.notificationService.notifications$.subscribe(
       notification => {
-        this.notification = notification;
+        //this.notification = notification;
       }
     );
   }
@@ -90,6 +116,47 @@ export class NoteAppLayoutComponent implements OnInit, OnDestroy {
 
     // Initialize the files for each tab view
     this.loadAllNotes(); // Load immediately since 'notes' is the default tab
+
+    this.teamService.activeTeam$.subscribe(team => {
+      this.currentTeam = team;
+      if (team) {
+        this.teamService.getUserRoleInTeam(team.id).subscribe(role => {
+          this.currentTeamRole = role;
+          this.isTeamOwner = role === TeamRole.Owner;
+        });
+      }
+    });
+  }
+
+  toggleTeamManagement(): void {
+    this.showTeamManagement = !this.showTeamManagement;
+  }
+
+  onConflictResolved(resolvedContent: string): void {
+    if (!this.conflictData) return;
+
+    this.isLoading = true;
+    this.statusMessage = 'Saving resolved content...';
+
+    this.saveResolvedContent(this.conflictData.fileId, resolvedContent);
+  }
+
+  saveResolvedContent(fileId: string, content: string): void {
+    // If using file service directly
+    this.markdownContent = content;
+    this.fileService.saveFile(content).subscribe({
+      next: () => {
+        this.conflictData = null;
+        this.isLoading = false;
+        this.statusMessage = '';
+        this.notificationService.success('Conflicts resolved and file saved');
+      },
+      error: (error) => {
+        this.isLoading = false;
+        this.statusMessage = '';
+        this.notificationService.error(`Error saving resolved file: ${error.message}`);
+      }
+    });
   }
 
   ngOnDestroy(): void {

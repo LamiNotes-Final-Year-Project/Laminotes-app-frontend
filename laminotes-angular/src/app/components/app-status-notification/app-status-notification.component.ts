@@ -8,12 +8,13 @@ import { CommonModule } from '@angular/common';
   template: `
     <div *ngIf="message"
          class="notification"
-         [ngClass]="{'success': type === 'success', 'error': type === 'error', 'info': type === 'info'}">
+         [ngClass]="{'success': type === 'success', 'error': type === 'error', 'info': type === 'info', 'warning': type === 'warning'}">
       <div class="notification-icon">
         <i class="fas"
            [ngClass]="{'fa-check-circle': type === 'success',
                       'fa-exclamation-circle': type === 'error',
-                      'fa-info-circle': type === 'info'}"></i>
+                      'fa-info-circle': type === 'info',
+                      'fa-exclamation-triangle': type === 'warning'}"></i>
       </div>
       <div class="notification-content">
         <div class="notification-message">{{ message }}</div>
@@ -67,6 +68,12 @@ import { CommonModule } from '@angular/common';
       color: white;
     }
 
+    .warning {
+      background-color: rgba(241, 196, 15, 0.95);
+      border-left: 4px solid #f39c12;
+      color: white;
+    }
+
     .notification-icon {
       margin-right: 16px;
       font-size: 20px;
@@ -95,7 +102,7 @@ import { CommonModule } from '@angular/common';
 })
 export class AppStatusNotificationComponent {
   @Input() message: string = '';
-  @Input() type: 'success' | 'error' | 'info' = 'info';
+  @Input() type: 'success' | 'error' | 'info' | 'warning' = 'info';
 
   clear() {
     this.message = '';

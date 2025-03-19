@@ -5,7 +5,8 @@ import { catchError, map, tap } from 'rxjs/operators';
 import { FileMetadata } from '../models/file-metadata';
 import { v4 as uuidv4 } from 'uuid';
 import { User } from '../models/user.model';
-import { Team } from '../models/team.model';
+import {Team, TeamRole} from '../models/team.model';
+import {InvitationStatus, TeamInvitation} from '../models/team-invitation.model';
 
 @Injectable({
   providedIn: 'root'
@@ -229,6 +230,63 @@ export class ApiService {
     );
   }
 
+  // Team Invitation Methods
+  /**
+   * Creates a team invitation
+   * @param teamId Team ID
+   * @param email Email of the invitee
+   * @param role Role to assign to the invitee
+   */
+  createTeamInvitation(teamId: string, email: string, role: TeamRole): Observable<TeamInvitation> {
+    const url = `${this.baseUrl}/teams/${teamId}/invitations`;
+    console.log(`📤 Creating team invitation: ${url}`);
+
+    return this.http.post<TeamInvitation>(url, { email, role }, {
+      headers: new HttpHeaders({ 'Content-Type': 'application/json' })
+    }).pipe(
+      tap(invitation => console.log(`✅ Invitation created: ${invitation.id}`)),
+      catchError(error => {
+        console.error('Failed to create invitation:', error);
+        return throwError(() => new Error(`Failed to create invitation: ${error.message}`));
+      })
+    );
+  }
+
+  /**
+   * Gets all invitations for the current user
+   */
+  getUserInvitations(): Observable<TeamInvitation[]> {
+    const url = `${this.baseUrl}/invitations`;
+    console.log(`📥 Fetching user invitations: ${url}`);
+
+    return this.http.get<TeamInvitation[]>(url).pipe(
+      tap(invitations => console.log(`✅ Fetched ${invitations.length} invitations`)),
+      catchError(error => {
+        console.error('Failed to fetch invitations:', error);
+        return throwError(() => new Error(`Failed to fetch invitations: ${error.message}`));
+      })
+    );
+  }
+
+  /**
+   * Gets all invitations for a specific team
+   * @param teamId Team ID
+   */
+  getTeamInvitations(teamId: string): Observable<TeamInvitation[]> {
+    const url = `${this.baseUrl}/teams/${teamId}/invitations`;
+    console.log(`📥 Fetching team invitations: ${url}`);
+
+    return this.http.get<TeamInvitation[]>(url).pipe(
+      tap(invitations => console.log(`✅ Fetched ${invitations.length} team invitations`)),
+      catchError(error => {
+        console.error('Failed to fetch team invitations:', error);
+        return throwError(() => new Error(`Failed to fetch team invitations: ${error.message}`));
+      })
+    );
+  }
+
+
+
   /**
    * Gets all teams for the current user
    */
@@ -276,6 +334,46 @@ export class ApiService {
       })
     );
   }
+
+
+  /**
+   * Responds to an invitation (accept/decline)
+   * @param invitationId Invitation ID
+   * @param status New status (accepted/declined)
+   */
+  respondToInvitation(invitationId: string, status: InvitationStatus): Observable<void> {
+    const url = `${this.baseUrl}/invitations/${invitationId}`;
+    console.log(`📤 Responding to invitation: ${url} with status: ${status}`);
+
+    return this.http.put<void>(url, { status }, {
+      headers: new HttpHeaders({ 'Content-Type': 'application/json' })
+    }).pipe(
+      tap(() => console.log(`✅ Invitation response sent: ${status}`)),
+      catchError(error => {
+        console.error('Failed to respond to invitation:', error);
+        return throwError(() => new Error(`Failed to respond to invitation: ${error.message}`));
+      })
+    );
+  }
+
+  /**
+   * Deletes (cancels) an invitation
+   * @param invitationId Invitation ID
+   */
+  deleteInvitation(invitationId: string): Observable<void> {
+    const url = `${this.baseUrl}/invitations/${invitationId}`;
+    console.log(`🗑️ Deleting invitation: ${url}`);
+
+    return this.http.delete<void>(url).pipe(
+      tap(() => console.log(`✅ Invitation deleted`)),
+      catchError(error => {
+        console.error('Failed to delete invitation:', error);
+        return throwError(() => new Error(`Failed to delete invitation: ${error.message}`));
+      })
+    );
+  }
+
+
 
   /**
    * Deactivates the current team and switches to personal files

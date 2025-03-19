@@ -222,6 +222,27 @@
               <span>LOGOUT</span>
             </button>
           </div>
+          <div class="option-group" *ngIf="currentTeam">
+            <h4>TEAM</h4>
+            <app-team-role
+              [team]="currentTeam"
+              [role]="currentTeamRole">
+            </app-team-role>
+
+            <!-- Team Management section, shown only when team management is active -->
+            <div *ngIf="showTeamManagement && isTeamOwner" class="team-management-section">
+              <h4>TEAM MANAGEMENT</h4>
+              <app-team-invitations
+                [team]="currentTeam"
+                [isOwner]="isTeamOwner">
+              </app-team-invitations>
+            </div>
+
+            <button class="action-button" (click)="toggleTeamManagement()">
+              <i class="fas" [ngClass]="showTeamManagement ? 'fa-chevron-up' : 'fa-users-cog'"></i>
+              <span>{{ showTeamManagement ? 'Hide Team Management' : 'Manage Team' }}</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -269,6 +290,13 @@
       </div>
     </div>
   </div>
+
+  <app-conflict-resolution
+    *ngIf="conflictData"
+    [conflictData]="conflictData"
+    (resolved)="onConflictResolved($event)"
+    (cancelled)="onConflictCancelled()">
+  </app-conflict-resolution>
 
   <!-- Auth modal dialog -->
   <app-auth-tabs
