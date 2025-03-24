@@ -1,6 +1,6 @@
-// src/app/services/team.service.ts
+// Improved TeamService with better owner recognition
 import { Injectable } from '@angular/core';
-import { BehaviorSubject, Observable, of } from 'rxjs';
+import { BehaviorSubject, Observable, of, forkJoin } from 'rxjs';
 import { catchError, switchMap, tap, map } from 'rxjs/operators';
 import { Team, TeamRole } from '../models/team.model';
 import { ApiService } from './api.service';
@@ -13,6 +13,7 @@ import { NotificationService } from './notification.service';
 export class TeamService {
   private readonly ACTIVE_TEAM_KEY = 'active_team';
   private activeTeamSubject = new BehaviorSubject<Team | null>(null);
+  private currentUserId: string | null = null;
 
   constructor(
     private apiService: ApiService,
@@ -21,6 +22,29 @@ export class TeamService {
   ) {
     // Load active team from local storage
     this.loadStoredTeam();
+
+    // Initialize current user ID
+    this.initCurrentUserId();
+  }
+
+  /**
+   * Initialize the current user ID from the auth service
+   */
+  private initCurrentUserId(): void {
+    this.authService.getToken().subscribe(token => {
+      if (token) {
+        // If authenticated, get current user info
+        this.apiService.getCurrentUser().subscribe({
+          next: (user) => {
+            this.currentUserId = user.user_id;
+            console.log('✅ Current user ID initialized:', this.currentUserId);
+          },
+          error: (error) => {
+            console.error('❌ Error getting current user:', error);
+          }
+        });
+      }
+    });
   }
 
   private loadStoredTeam(): void {
@@ -94,6 +118,9 @@ export class TeamService {
       tap(team => {
         console.log(`✅ Team created: ${team.name} (${team.id})`);
         this.notificationService.success(`Team "${team.name}" created successfully`);
+
+        // Store the fact that the current user is the owner
+        this.setCurrentUserAsOwner(team);
       }),
       catchError(error => {
         console.error('❌ Error creating team:', error);
@@ -101,6 +128,28 @@ export class TeamService {
         return of(null);
       })
     );
+  }
+
+  /**
+   * Explicitly mark the current user as the owner of a team
+   * This helps maintain local state in sync with backend
+   */
+  private setCurrentUserAsOwner(team: Team): void {
+    // Get current user ID if not already available
+    if (!this.currentUserId) {
+      this.apiService.getCurrentUser().subscribe(user => {
+        this.currentUserId = user.user_id;
+        // Update team owner_id locally if needed
+        if (team.owner_id !== this.currentUserId) {
+          team.owner_id = this.currentUserId;
+        }
+      });
+    } else {
+      // Update team owner_id locally if needed
+      if (team.owner_id !== this.currentUserId) {
+        team.owner_id = this.currentUserId;
+      }
+    }
   }
 
   getUserTeams(): Observable<Team[]> {
@@ -126,40 +175,57 @@ export class TeamService {
       return of(TeamRole.Viewer); // Default role if no team
     }
 
-    // This would normally make a backend API call to get the user's role
-    // For now, check if the user is the owner of the team
-    return this.apiService.getUserTeams().pipe(
-      map(teams => {
-        const team = teams.find(t => t.id === teamId);
+    // First check if we need to get the current user
+    return this.ensureCurrentUserId().pipe(
+      switchMap(() => {
+        // Get the team details
+        return this.apiService.getUserTeams().pipe(
+          map(teams => {
+            const team = teams.find(t => t.id === teamId);
 
-        if (!team) {
-          return TeamRole.Viewer; // Default if team not found
-        }
+            if (!team) {
+              console.warn(`Team ${teamId} not found in user's teams`);
+              return TeamRole.Viewer; // Default if team not found
+            }
 
-        // Check if user is owner
-        return team.owner_id === this.getCurrentUserId() ?
-          TeamRole.Owner : TeamRole.Contributor;
-      }),
-      catchError(error => {
-        console.error('Error fetching team role:', error);
-        return of(TeamRole.Viewer); // Default on error
+            // Check if user is owner
+            if (team.owner_id === this.currentUserId) {
+              console.log(`User is the OWNER of team ${team.name}`);
+              return TeamRole.Owner;
+            }
+
+            // For now, assume Contributor for team members
+            // In a full implementation, you'd query team member roles from the backend
+            console.log(`User is a CONTRIBUTOR to team ${team.name}`);
+            return TeamRole.Contributor;
+          }),
+          catchError(error => {
+            console.error('Error fetching team role:', error);
+            return of(TeamRole.Viewer); // Default on error
+          })
+        );
       })
     );
   }
 
-  // Helper method to get current user ID
-  private getCurrentUserId(): string {
-    // This is a placeholder - in a real app, you'd get this from AuthService
-    // You could also store this after successful login
-    const userJson = localStorage.getItem('current_user');
-    if (userJson) {
-      try {
-        const user = JSON.parse(userJson);
-        return user.user_id || '';
-      } catch (e) {
-        return '';
-      }
+  /**
+   * Makes sure we have the current user ID
+   * Returns an observable that completes when user ID is available
+   */
+  private ensureCurrentUserId(): Observable<string | null> {
+    if (this.currentUserId) {
+      return of(this.currentUserId);
     }
-    return '';
+
+    return this.apiService.getCurrentUser().pipe(
+      map(user => {
+        this.currentUserId = user.user_id;
+        return this.currentUserId;
+      }),
+      catchError(error => {
+        console.error('Error getting user ID:', error);
+        return of(null);
+      })
+    );
   }
 }

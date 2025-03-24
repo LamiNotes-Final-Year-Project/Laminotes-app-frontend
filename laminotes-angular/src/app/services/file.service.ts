@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { ApiService } from './api.service';
 import { MetadataService } from './metadata.service';
 import { TeamService } from './team.service';
+import {TeamRole} from '../models/team.model';
 
 export interface FileInfo {
   path: string;
@@ -488,10 +489,32 @@ export class FileService {
 
     const activeTeam = this.teamService.activeTeam;
 
+    // Check team permissions if we're in a team context
+    if (activeTeam) {
+      // Get current user's role in the team
+      return this.teamService.getUserRoleInTeam(activeTeam.id).pipe(
+        switchMap(role => {
+          // Check if user has at least Contributor role
+          if (role < TeamRole.Contributor) {
+            console.error(`❌ Insufficient permissions for team uploads. Your role: ${role}`);
+            return throwError(() => new Error('You need Contributor or Owner permissions to upload files to this team.'));
+          }
+
+          // If user has permissions, proceed with upload
+          return this.performUploadAll(activeTeam.id);
+        })
+      );
+    }
+
+    // For personal files, no permission check needed
+    return this.performUploadAll();
+  }
+
+// Helper method to perform the actual uploads
+  private performUploadAll(teamId?: string): Observable<void> {
     // Create observables for each file to upload
     const uploadObservables = this.filesInDirectory.map(file => {
       const content = localStorage.getItem(`${this.FILE_CONTENT_PREFIX}${file.path}`) || '';
-      const teamId = file.team_id || activeTeam?.id;
 
       return this.metadataService.loadMetadata(file).pipe(
         switchMap(metadata => {
@@ -524,5 +547,4 @@ export class FileService {
         return of(undefined);
       })
     );
-  }
-}
+  }}

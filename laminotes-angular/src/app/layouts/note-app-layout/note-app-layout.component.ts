@@ -55,7 +55,7 @@ export class NoteAppLayoutComponent implements OnInit, OnDestroy {
 
   // Team-related properties
   currentTeam: Team | null = null;
-  currentTeamRole: TeamRole = TeamRole.Viewer; // default to viewer
+  currentTeamRole: TeamRole = TeamRole.Contributor; // default to viewer
   showTeamManagement: boolean = false;
   isTeamOwner: boolean = false;
 
@@ -88,7 +88,7 @@ export class NoteAppLayoutComponent implements OnInit, OnDestroy {
   isLoading: boolean = false;
 
   // Notification data
-  notification: { message: string, type: 'success' | 'error' | 'info' } | null = null;
+  notification: { message: string, type: 'success' | 'error' | 'info' | 'warning' } | null = null;
   private notificationSubscription: Subscription;
 
   constructor(
@@ -101,7 +101,7 @@ export class NoteAppLayoutComponent implements OnInit, OnDestroy {
   ) {
     this.notificationSubscription = this.notificationService.notifications$.subscribe(
       notification => {
-        //this.notification = notification;
+        this.notification = notification;
       }
     );
   }
@@ -139,6 +139,11 @@ export class NoteAppLayoutComponent implements OnInit, OnDestroy {
     this.statusMessage = 'Saving resolved content...';
 
     this.saveResolvedContent(this.conflictData.fileId, resolvedContent);
+  }
+
+  onConflictCancelled(): void {
+    this.conflictData = null;
+    this.notificationService.info('Conflict resolution cancelled');
   }
 
   saveResolvedContent(fileId: string, content: string): void {
@@ -314,7 +319,7 @@ export class NoteAppLayoutComponent implements OnInit, OnDestroy {
         this.activeTabIndex--;
       }
 
-     // TODO: implement file saving and deleting
+      // TODO: implement file saving and deleting
     }
   }
 
@@ -411,6 +416,39 @@ export class NoteAppLayoutComponent implements OnInit, OnDestroy {
 
   // Operations for the Options panel
   uploadAllFiles(): void {
+    // First check if we're in a team context and have appropriate permissions
+    const activeTeam = this.teamService.activeTeam;
+
+    if (activeTeam) {
+      this.isLoading = true;
+      this.statusMessage = 'Checking team permissions...';
+
+      this.teamService.getUserRoleInTeam(activeTeam.id).subscribe({
+        next: (role) => {
+          if (role < TeamRole.Contributor) {
+            this.isLoading = false;
+            this.statusMessage = '';
+            this.notificationService.error(`You need Contributor or Owner permissions to upload files to the ${activeTeam.name} team.`);
+            return;
+          }
+
+          // If we have sufficient permissions, proceed with upload
+          this.performUpload();
+        },
+        error: (error) => {
+          this.isLoading = false;
+          this.statusMessage = '';
+          this.notificationService.error(`Error checking team permissions: ${error.message}`);
+        }
+      });
+    } else {
+      // For personal files, no permission check needed
+      this.performUpload();
+    }
+  }
+
+// Helper method to perform the actual upload
+  private performUpload(): void {
     this.isLoading = true;
     this.statusMessage = 'Uploading all files...';
 
