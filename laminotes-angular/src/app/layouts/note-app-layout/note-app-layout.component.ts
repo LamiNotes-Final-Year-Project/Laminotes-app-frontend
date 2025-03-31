@@ -7,6 +7,7 @@ import {FileInfo, FileService} from '../../services/file.service';
 import {AuthService} from '../../services/auth.service';
 import {MetadataService} from '../../services/metadata.service';
 import {NotificationService} from '../../services/notification.service';
+import {InvitationService} from '../../services/invitation.service';
 
 import {ColoredMarkdownViewComponent} from '../../components/colored-markdown-view/colored-markdown-view.component';
 import {AuthTabsComponent} from '../../components/auth-tabs/auth-tabs.component';
@@ -22,9 +23,10 @@ import {
   ConflictResolutionComponent
 } from '../../components/conflict-resolution/conflict-resolution.component';
 import {Team, TeamRole} from '../../models/team.model';
+import {InvitationStatus} from '../../models/team-invitation.model';
 import {VersionControlService} from '../../services/version-control.service';
 import {TeamService} from '../../services/team.service';
-
+import {UserInvitationsComponent} from '../../components/user-invitations/user-invitations.component';
 
 @Component({
   selector: 'app-note-app-layout',
@@ -40,6 +42,7 @@ import {TeamService} from '../../services/team.service';
     TeamRoleComponent,
     TeamInvitationsComponent,
     ConflictResolutionComponent,
+    UserInvitationsComponent,
   ],
   templateUrl: './note-app-layout.component.html',
   styleUrls: ['./note-app-layout.component.css']
@@ -58,10 +61,11 @@ export class NoteAppLayoutComponent implements OnInit, OnDestroy {
   currentTeamRole: TeamRole = TeamRole.Contributor; // default to viewer
   showTeamManagement: boolean = false;
   isTeamOwner: boolean = false;
+  showUserInvitations: boolean = false;
+  hasPendingInvitations: boolean = false;
 
   // Conflict resolution
   conflictData: ConflictData | null = null;
-
 
   // Tab-specific properties
   currentTabView: 'recents' | 'notes' | 'shared' = 'notes';
@@ -98,6 +102,7 @@ export class NoteAppLayoutComponent implements OnInit, OnDestroy {
     private notificationService: NotificationService,
     private teamService: TeamService,
     private versionControl: VersionControlService,
+    private invitationService: InvitationService
   ) {
     this.notificationSubscription = this.notificationService.notifications$.subscribe(
       notification => {
@@ -109,6 +114,12 @@ export class NoteAppLayoutComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     // Checks if there are any files already
     this.fileService.refreshFileList();
+
+    this.authService.isAuthenticated().subscribe(isAuthenticated => {
+      if (isAuthenticated) {
+        this.checkForPendingInvitations();
+      }
+    });
 
     if (this.fileService.filesInDirectory.length > 0) {
       this.openFile(this.fileService.filesInDirectory[0]);
@@ -382,6 +393,36 @@ export class NoteAppLayoutComponent implements OnInit, OnDestroy {
     });
   }
 
+  checkForPendingInvitations(): void {
+    if (this.authService.isLoggedIn) {
+      this.invitationService.getMyInvitations().subscribe({
+        next: (invitations) => {
+          // Check if there are any pending invitations
+          this.hasPendingInvitations = invitations.some(
+            inv => inv.status === InvitationStatus.Pending
+          );
+        },
+        error: (error) => {
+          console.error('Error checking invitations:', error);
+        }
+      });
+    }
+  }
+
+  toggleUserInvitations(): void {
+    this.showUserInvitations = !this.showUserInvitations;
+    if (this.showUserInvitations) {
+      // Close other panels when opening invitations
+      this.isRightSidebarOpen = false;
+      this.isDebugPanelOpen = false;
+    }
+  }
+
+  onInvitationAccepted(): void {
+    this.showUserInvitations = false;
+    this.hasPendingInvitations = false;
+  }
+
   // Helper methods
   getOrgInitials(name: string): string {
     return name.split(' ').map(word => word[0]).join('').substring(0, 2).toUpperCase();
@@ -447,7 +488,7 @@ export class NoteAppLayoutComponent implements OnInit, OnDestroy {
     }
   }
 
-// Helper method to perform the actual upload
+  // Helper method to perform the actual upload
   private performUpload(): void {
     this.isLoading = true;
     this.statusMessage = 'Uploading all files...';

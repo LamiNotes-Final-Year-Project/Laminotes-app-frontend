@@ -7,6 +7,9 @@ import { ApiService } from '../../services/api.service';
 import { BehaviorSubject, of } from 'rxjs';
 import { catchError, finalize, switchMap, tap } from 'rxjs/operators';
 import { User } from '../../models/user.model';
+import { InvitationService } from '../../services/invitation.service';
+import { TeamService } from '../../services/team.service';
+import { TeamRole } from '../../models/team.model'
 
 @Component({
   selector: 'app-debug-panel',
@@ -70,6 +73,7 @@ import { User } from '../../models/user.model';
               No local files
             </div>
           </div>
+          <button class="debug-btn" (click)="createTestInvitation()">Create Test Invitation</button>
         </div>
 
         <div class="section">
@@ -299,7 +303,10 @@ export class DebugPanelComponent implements OnInit {
     public fileService: FileService,
     private notificationService: NotificationService,
     private authService: AuthService,
-    private apiService: ApiService
+    private apiService: ApiService,
+    private invitationService: InvitationService,
+    private teamService: TeamService,
+
   ) {}
 
   ngOnInit(): void {
@@ -463,6 +470,42 @@ export class DebugPanelComponent implements OnInit {
         break;
     }
   }
+  createTestInvitation(): void {
+    // Get the current user's email for the test
+    this.apiService.getCurrentUser().subscribe({
+      next: (user) => {
+        // First check if we have an active team
+        const activeTeam = this.teamService.activeTeam;
+
+        if (!activeTeam) {
+          this.addLog('error', 'No active team. Please select a team first.');
+          this.notificationService.error('Please select a team first to create a test invitation');
+          return;
+        }
+
+        // Create an invitation to the current user (or you could use any email)
+        this.invitationService.createInvitation(
+          activeTeam.id,
+          user.email, // Use current user's email or any test email
+          TeamRole.Contributor
+        ).subscribe({
+          next: (invitation) => {
+            this.addLog('success', `Test invitation created: ${invitation.id}`);
+            this.notificationService.success('Test invitation created successfully');
+          },
+          error: (error) => {
+            this.addLog('error', `Failed to create test invitation: ${error.message}`);
+            this.notificationService.error(`Failed to create test invitation: ${error.message}`);
+          }
+        });
+      },
+      error: (error) => {
+        this.addLog('error', `Failed to get current user: ${error.message}`);
+        this.notificationService.error(`Failed to get current user: ${error.message}`);
+      }
+    });
+  }
+
 
   clearLog(): void {
     this.logEntries = [];

@@ -1,3 +1,4 @@
+// laminotes-angular/src/app/components/team-invitations/team-invitations.component.ts
 import { Component, Input, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -351,7 +352,8 @@ export class TeamInvitationsComponent implements OnInit {
         );
         this.isLoading = false;
       },
-      error: () => {
+      error: (error) => {
+        this.notificationService.error(`Failed to load invitations: ${error.message}`);
         this.isLoading = false;
       }
     });
@@ -375,8 +377,10 @@ export class TeamInvitationsComponent implements OnInit {
         this.newInvitation.email = '';
         this.newInvitation.role = TeamRole.Viewer;
         this.isInviting = false;
+        this.notificationService.success(`Invitation sent to ${invitation.invited_email}`);
       },
-      error: () => {
+      error: (error) => {
+        this.notificationService.error(`Failed to send invitation: ${error.message}`);
         this.isInviting = false;
       }
     });
@@ -388,6 +392,10 @@ export class TeamInvitationsComponent implements OnInit {
         this.pendingInvitations = this.pendingInvitations.filter(
           inv => inv.id !== invitation.id
         );
+        this.notificationService.info('Invitation cancelled');
+      },
+      error: (error) => {
+        this.notificationService.error(`Failed to cancel invitation: ${error.message}`);
       }
     });
   }

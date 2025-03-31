@@ -1,9 +1,11 @@
-import { Component, OnInit } from '@angular/core';
+// laminotes-angular/src/app/components/user-invitations/user-invitations.component.ts
+import { Component, OnInit, Output, EventEmitter } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { TeamInvitation, InvitationStatus } from '../../models/team-invitation.model';
 import { TeamRole } from '../../models/team.model';
 import { InvitationService } from '../../services/invitation.service';
 import { NotificationService } from '../../services/notification.service';
+import { TeamService } from '../../services/team.service';
 
 @Component({
   selector: 'app-user-invitations',
@@ -54,10 +56,14 @@ import { NotificationService } from '../../services/notification.service';
           </div>
 
           <div class="invitation-actions">
-            <button class="action-button decline" (click)="declineInvitation(invitation)">
+            <button class="action-button decline"
+                    [disabled]="invitation.isProcessing"
+                    (click)="declineInvitation(invitation)">
               Decline
             </button>
-            <button class="action-button accept" (click)="acceptInvitation(invitation)">
+            <button class="action-button accept"
+                    [disabled]="invitation.isProcessing"
+                    (click)="acceptInvitation(invitation)">
               <i class="fas fa-check"></i> Accept
             </button>
           </div>
@@ -227,7 +233,7 @@ import { NotificationService } from '../../services/notification.service';
       border: 1px solid rgba(255, 255, 255, 0.1);
     }
 
-    .action-button.decline:hover {
+    .action-button.decline:hover:not(:disabled) {
       background-color: rgba(255, 255, 255, 0.05);
       color: #F3F3F7;
     }
@@ -237,8 +243,13 @@ import { NotificationService } from '../../services/notification.service';
       color: white;
     }
 
-    .action-button.accept:hover {
+    .action-button.accept:hover:not(:disabled) {
       background-color: #FF7A45;
+    }
+
+    .action-button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
     }
 
     .loading-indicator {
@@ -272,13 +283,16 @@ import { NotificationService } from '../../services/notification.service';
   `]
 })
 export class UserInvitationsComponent implements OnInit {
-  pendingInvitations: TeamInvitation[] = [];
+  @Output() invitationAccepted = new EventEmitter<void>();
+
+  pendingInvitations: (TeamInvitation & { isProcessing?: boolean })[] = [];
   isLoading: boolean = false;
   colorCache: Record<string, string> = {};
 
   constructor(
     private invitationService: InvitationService,
-    private notificationService: NotificationService
+    private notificationService: NotificationService,
+    private teamService: TeamService
   ) {}
 
   ngOnInit(): void {
@@ -290,38 +304,69 @@ export class UserInvitationsComponent implements OnInit {
 
     this.invitationService.getMyInvitations().subscribe({
       next: (invitations) => {
-        this.pendingInvitations = invitations.filter(
-          inv => inv.status === InvitationStatus.Pending
-        );
+        this.pendingInvitations = invitations
+          .filter(inv => inv.status === InvitationStatus.Pending)
+          .map(inv => ({...inv, isProcessing: false}));
         this.isLoading = false;
       },
-      error: () => {
+      error: (error) => {
+        this.notificationService.error(`Failed to load invitations: ${error.message}`);
         this.isLoading = false;
       }
     });
   }
 
-  acceptInvitation(invitation: TeamInvitation): void {
+  acceptInvitation(invitation: TeamInvitation & { isProcessing?: boolean }): void {
+    // Mark as processing to prevent double-clicks
+    invitation.isProcessing = true;
+
     this.invitationService.acceptInvitation(invitation.id).subscribe({
       next: () => {
+        this.notificationService.success(`You've joined the team: ${invitation.team_name || 'Unknown'}`);
+
+        // Remove from pending list
         this.pendingInvitations = this.pendingInvitations.filter(
           inv => inv.id !== invitation.id
         );
 
-        // Reload page to refresh teams list
-        setTimeout(() => {
-          window.location.reload();
-        }, 1000);
+        // Switch to the newly joined team
+        if (invitation.team_id) {
+          this.teamService.getUserTeams().subscribe(teams => {
+            const joinedTeam = teams.find(team => team.id === invitation.team_id);
+            if (joinedTeam) {
+              this.teamService.setActiveTeam(joinedTeam).subscribe(() => {
+                // Notify parent that an invitation was accepted
+                this.invitationAccepted.emit();
+
+                // Reload page to refresh team context
+                setTimeout(() => {
+                  window.location.reload();
+                }, 1000);
+              });
+            }
+          });
+        }
+      },
+      error: (error) => {
+        invitation.isProcessing = false;
+        this.notificationService.error(`Failed to accept invitation: ${error.message}`);
       }
     });
   }
 
-  declineInvitation(invitation: TeamInvitation): void {
+  declineInvitation(invitation: TeamInvitation & { isProcessing?: boolean }): void {
+    invitation.isProcessing = true;
+
     this.invitationService.declineInvitation(invitation.id).subscribe({
       next: () => {
         this.pendingInvitations = this.pendingInvitations.filter(
           inv => inv.id !== invitation.id
         );
+        this.notificationService.info('Invitation declined');
+      },
+      error: (error) => {
+        invitation.isProcessing = false;
+        this.notificationService.error(`Failed to decline invitation: ${error.message}`);
       }
     });
   }

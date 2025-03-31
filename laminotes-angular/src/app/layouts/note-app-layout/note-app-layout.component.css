@@ -903,6 +903,57 @@ app-colored-markdown-view * {
     width: 100%;
   }
 
+  .user-invitations-panel {
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    width: 400px;
+    max-width: 90vw;
+    background-color: #1A1C25;
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 95, 31, 0.2);
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 120px);
+    animation: slideIn 0.3s ease;
+  }
+
+  @keyframes slideIn {
+    from { transform: translateY(-20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+
+  .panel-header {
+    padding: 12px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(255, 95, 31, 0.15);
+  }
+
+  .panel-header h3 {
+    margin: 0;
+    font-size: 16px;
+    color: #F3F3F7;
+  }
+
+  .panel-content {
+    padding: 16px;
+    overflow-y: auto;
+  }
+
+  .command-button.active {
+    background-color: #FF5F1F;
+    color: white;
+    border-color: #FF5F1F;
+  }
+
+  .command-button.active i {
+    color: white;
+  }
+
   .editor-panel {
     flex: none;
     height: 60%;
