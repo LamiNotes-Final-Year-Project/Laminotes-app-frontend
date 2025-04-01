@@ -1,4 +1,5 @@
 import { Component, OnInit, EventEmitter, Output } from '@angular/core';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { CommonModule } from '@angular/common';
 import { FileService } from '../../services/file.service';
 import { NotificationService } from '../../services/notification.service';
@@ -9,7 +10,7 @@ import { catchError, finalize, switchMap, tap } from 'rxjs/operators';
 import { User } from '../../models/user.model';
 import { InvitationService } from '../../services/invitation.service';
 import { TeamService } from '../../services/team.service';
-import { TeamRole } from '../../models/team.model'
+import {Team, TeamRole} from '../../models/team.model'
 
 @Component({
   selector: 'app-debug-panel',
@@ -306,6 +307,7 @@ export class DebugPanelComponent implements OnInit {
     private apiService: ApiService,
     private invitationService: InvitationService,
     private teamService: TeamService,
+    private http: HttpClient
 
   ) {}
 
@@ -470,42 +472,121 @@ export class DebugPanelComponent implements OnInit {
         break;
     }
   }
-  createTestInvitation(): void {
-    // Get the current user's email for the test
-    this.apiService.getCurrentUser().subscribe({
-      next: (user) => {
-        // First check if we have an active team
-        const activeTeam = this.teamService.activeTeam;
 
-        if (!activeTeam) {
-          this.addLog('error', 'No active team. Please select a team first.');
-          this.notificationService.error('Please select a team first to create a test invitation');
+  createTestInvitation(): void {
+    // First check if we have an active team
+    const activeTeam = this.teamService.activeTeam;
+
+    if (!activeTeam) {
+      this.addLog('error', 'No active team. Please select a team first.');
+      this.notificationService.error('Please select a team first to create a test invitation');
+      return;
+    }
+
+    // First check the user's role in this team
+    this.teamService.getUserRoleInTeam(activeTeam.id).subscribe({
+      next: (role) => {
+        this.addLog('info', `Current user's role in team: ${role} (${this.getRoleString(role)})`);
+
+        if (role < TeamRole.Contributor) {
+          this.addLog('error', `You don't have permission to create invitations. Minimum role required: Contributor`);
+          this.notificationService.error('You need to be at least a Contributor to invite others');
           return;
         }
 
-        // Create an invitation to the current user (or you could use any email)
-        this.invitationService.createInvitation(
-          activeTeam.id,
-          user.email, // Use current user's email or any test email
-          TeamRole.Contributor
-        ).subscribe({
-          next: (invitation) => {
-            this.addLog('success', `Test invitation created: ${invitation.id}`);
-            this.notificationService.success('Test invitation created successfully');
-          },
-          error: (error) => {
-            this.addLog('error', `Failed to create test invitation: ${error.message}`);
-            this.notificationService.error(`Failed to create test invitation: ${error.message}`);
-          }
-        });
+        // Proceed with creating the invitation since user has sufficient permissions
+        this.proceedWithInvitation(activeTeam);
       },
       error: (error) => {
-        this.addLog('error', `Failed to get current user: ${error.message}`);
-        this.notificationService.error(`Failed to get current user: ${error.message}`);
+        this.addLog('error', `Error checking user role: ${error.message}`);
+        this.notificationService.error('Could not verify your permissions in this team');
       }
     });
   }
 
+// Helper method to create the invitation after permission check
+  private proceedWithInvitation(activeTeam: Team): void {
+    // Generate a random test email
+    const randomEmail = `test-user-${Math.floor(Math.random() * 10000)}@example.com`;
+
+    // Log detailed debugging information
+    this.addLog('info', `Creating test invitation with the following details:`);
+    this.addLog('info', `Team ID: ${activeTeam.id}`);
+    this.addLog('info', `Team Name: ${activeTeam.name}`);
+    this.addLog('info', `Email: ${randomEmail}`);
+
+    // Convert TeamRole enum to string representation
+    const roleString = this.getRoleString(TeamRole.Contributor);
+    this.addLog('info', `Role: ${TeamRole.Contributor} (${roleString})`);
+
+    // Check if we're authenticated
+    this.authService.getToken().subscribe(token => {
+      if (!token) {
+        this.addLog('error', 'Not authenticated! Please log in first.');
+        this.notificationService.error('You must be logged in to create invitations');
+        return;
+      }
+
+      this.addLog('info', `User is authenticated with token: ${token.substring(0, 10)}...`);
+
+      // Create a direct HTTP request
+      const url = `${this.apiService.baseUrl}/teams/${activeTeam.id}/invitations`;
+      const payload = {
+        email: randomEmail,
+        role: roleString
+      };
+
+      this.addLog('info', `Sending HTTP POST to: ${url}`);
+      this.addLog('info', `Payload: ${JSON.stringify(payload)}`);
+
+      // Create the invitation with detailed error handling
+      this.http.post(url, payload, {
+        headers: new HttpHeaders({
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }),
+        observe: 'response'
+      }).subscribe({
+        next: (response) => {
+          this.addLog('success', `Invitation created successfully! Status: ${response.status}`);
+          this.addLog('success', `Response: ${JSON.stringify(response.body)}`);
+          this.notificationService.success('Test invitation created successfully');
+        },
+        error: (error) => {
+          this.addLog('error', `HTTP Error: ${error.status} ${error.statusText}`);
+
+          // Try to extract the error message from the response
+          let errorMessage = 'Unknown error';
+          if (error.error) {
+            if (typeof error.error === 'string') {
+              errorMessage = error.error;
+            } else if (error.error.message) {
+              errorMessage = error.error.message;
+            } else {
+              errorMessage = JSON.stringify(error.error);
+            }
+          }
+
+          this.addLog('error', `Error details: ${errorMessage}`);
+          this.notificationService.error(`Failed to create invitation: ${errorMessage}`);
+        }
+      });
+    });
+  }
+
+// Helper function to convert TeamRole enum to string
+  private getRoleString(role: TeamRole): string {
+    switch(role) {
+      case TeamRole.Viewer:
+        return "Viewer";
+      case TeamRole.Contributor:
+        return "Contributor";
+      case TeamRole.Owner:
+        return "Owner";
+      default:
+        return "Viewer";
+    }
+  }
 
   clearLog(): void {
     this.logEntries = [];
