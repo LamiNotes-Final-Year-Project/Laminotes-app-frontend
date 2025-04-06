@@ -131,10 +131,11 @@ export class NoteAppLayoutComponent implements OnInit, OnDestroy {
     this.teamService.activeTeam$.subscribe(team => {
       this.currentTeam = team;
       if (team) {
-        this.teamService.getUserRoleInTeam(team.id).subscribe(role => {
-          this.currentTeamRole = role;
-          this.isTeamOwner = role === TeamRole.Owner;
-        });
+        this.fetchTeamRole(team.id);
+      } else {
+        // Reset role when no team is active
+        this.currentTeamRole = TeamRole.Viewer;
+        this.isTeamOwner = false;
       }
     });
   }
@@ -376,6 +377,31 @@ export class NoteAppLayoutComponent implements OnInit, OnDestroy {
     });
   }
 
+  // Permission check methods
+  canEditTeamFiles(): boolean {
+    if (!this.currentTeam) return true; // Personal files can always be edited
+    return this.currentTeamRole >= TeamRole.Contributor;
+  }
+
+  canManageTeam(): boolean {
+    return this.isTeamOwner;
+  }
+
+  canInviteMembers(): boolean {
+    return this.currentTeamRole >= TeamRole.Contributor;
+  }
+
+  openInviteDialog(): void {
+    if (!this.canInviteMembers()) {
+      this.notificationService.error('You need contributor or owner permissions to invite team members');
+      return;
+    }
+
+    // Implementation depends on your app's structure
+    this.notificationService.info('Opening invite dialog...');
+    // Your invite dialog logic here
+  }
+
   private loadAllNotes(): void {
     this.fileService.refreshFileList();
     this.allFiles = this.fileService.filesInDirectory;
@@ -527,6 +553,33 @@ export class NoteAppLayoutComponent implements OnInit, OnDestroy {
       }
     });
   }
+
+  private fetchTeamRole(teamId: string): void {
+    if (!teamId) return;
+
+    this.isLoading = true;
+    this.statusMessage = 'Checking permissions...';
+
+    this.teamService.getUserRoleInTeam(teamId).subscribe({
+      next: (role) => {
+        this.currentTeamRole = role;
+        this.isTeamOwner = role === TeamRole.Owner;
+        console.log(`Current role in team: ${TeamRole[role]}`);
+        this.isLoading = false;
+        this.statusMessage = '';
+      },
+      error: (error) => {
+        console.error('Error fetching team role:', error);
+        // Default to contributor on error to avoid blocking users
+        this.currentTeamRole = TeamRole.Contributor;
+        this.isTeamOwner = false;
+        this.isLoading = false;
+        this.statusMessage = '';
+        this.notificationService.warning('Could not verify your team permissions');
+      }
+    });
+  }
+
 
   toggleDebugPanel(): void {
     this.isDebugPanelOpen = !this.isDebugPanelOpen;

@@ -14,6 +14,9 @@ export class TeamService {
   private readonly ACTIVE_TEAM_KEY = 'active_team';
   private activeTeamSubject = new BehaviorSubject<Team | null>(null);
   private currentUserId: string | null = null;
+  private roleCache: Map<string, TeamRole> = new Map<string, TeamRole>();
+  private roleCacheExpiry: Map<string, number> = new Map<string, number>();
+  private readonly CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 
   constructor(
     private apiService: ApiService,
@@ -69,6 +72,10 @@ export class TeamService {
   }
 
   setActiveTeam(team: Team | null): Observable<boolean> {
+
+    // clear role cache when swapping team
+    this.clearRoleCache();
+
     console.log(`🔄 Setting active team: ${team ? team.name : 'personal'}`);
 
     if (team) {
@@ -167,45 +174,89 @@ export class TeamService {
   }
 
   /**
-   * Get the user's role in a specific team
-   * @param teamId The ID of the team
+   * Get User's role in a specific team
+   * @param teamId
    */
   getUserRoleInTeam(teamId: string): Observable<TeamRole> {
     if (!teamId) {
       return of(TeamRole.Viewer); // Default role if no team
     }
 
-    // First check if we need to get the current user
-    return this.ensureCurrentUserId().pipe(
-      switchMap(() => {
-        // Get the team details
-        return this.apiService.getUserTeams().pipe(
-          map(teams => {
-            const team = teams.find(t => t.id === teamId);
+    // Check cache first
+    const now = Date.now();
+    const cachedRole = this.roleCache.get(teamId);
+    const cacheExpiry = this.roleCacheExpiry.get(teamId) || 0;
 
-            if (!team) {
-              console.warn(`Team ${teamId} not found in user's teams`);
-              return TeamRole.Viewer; // Default if team not found
-            }
+    if (cachedRole !== undefined && now < cacheExpiry) {
+      console.log(`Using cached role for team ${teamId}: ${TeamRole[cachedRole]}`);
+      return of(cachedRole);
+    }
 
-            // Check if user is owner
-            if (team.owner_id === this.currentUserId) {
-              console.log(`User is the OWNER of team ${team.name}`);
-              return TeamRole.Owner;
-            }
+    // Get the team details to check if user is owner (faster than API call)
+    return this.apiService.getUserTeams().pipe(
+      switchMap(teams => {
+        const team = teams.find(t => t.id === teamId);
 
-            // For now, assume Contributor for team members
-            // In a full implementation, you'd query team member roles from the backend
-            console.log(`User is a CONTRIBUTOR to team ${team.name}`);
-            return TeamRole.Contributor;
-          }),
-          catchError(error => {
-            console.error('Error fetching team role:', error);
-            return of(TeamRole.Viewer); // Default on error
-          })
+        if (!team) {
+          console.warn(`Team ${teamId} not found in user's teams`);
+          return of(TeamRole.Viewer); // Default if team not found
+        }
+
+        // Get current user ID if not already available
+        if (!this.currentUserId) {
+          return this.apiService.getCurrentUser().pipe(
+            switchMap(user => {
+              this.currentUserId = user.user_id;
+
+              // Quick check: if user is owner, return Owner role immediately
+              if (team.owner_id === this.currentUserId) {
+                console.log(`User is the OWNER of team ${team.name}`);
+                this.cacheRole(teamId, TeamRole.Owner);
+                return of(TeamRole.Owner);
+              }
+
+              // Otherwise query the backend for actual role
+              return this.apiService.getUserRoleInTeam(teamId).pipe(
+                tap(role => this.cacheRole(teamId, role)),
+                catchError(() => of(TeamRole.Contributor)) // Fallback if API fails
+              );
+            })
+          );
+        }
+
+        // If we already have the current user ID
+        if (team.owner_id === this.currentUserId) {
+          console.log(`User is the OWNER of team ${team.name}`);
+          this.cacheRole(teamId, TeamRole.Owner);
+          return of(TeamRole.Owner);
+        }
+
+        // Query the backend for the actual role
+        return this.apiService.getUserRoleInTeam(teamId).pipe(
+          tap(role => this.cacheRole(teamId, role)),
+          catchError(() => of(TeamRole.Contributor)) // Fallback if API fails
         );
-      })
+      }),
+      catchError(() => of(TeamRole.Viewer)) // Default fallback
     );
+  }
+
+
+  /**
+   * Clears the role cache
+   */
+  clearRoleCache(): void {
+    this.roleCache.clear();
+    this.roleCacheExpiry.clear();
+  }
+
+  /**
+   * Helper method to cache a role
+   */
+  private cacheRole(teamId: string, role: TeamRole): void {
+    this.roleCache.set(teamId, role);
+    this.roleCacheExpiry.set(teamId, Date.now() + this.CACHE_DURATION_MS);
+    console.log(`Cached role for team ${teamId}: ${TeamRole[role]}, expires in ${this.CACHE_DURATION_MS/1000}s`);
   }
 
   /**

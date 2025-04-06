@@ -269,6 +269,28 @@ export class ApiService {
   }
 
   /**
+   * Gets the current user's role in a specific team
+   * @param teamId The ID of the team
+   */
+  getUserRoleInTeam(teamId: string): Observable<TeamRole> {
+    const url = `${this.baseUrl}/teams/${teamId}/members/role`;
+    console.log(`🔍 Fetching user role for team: ${teamId}`);
+
+    return this.http.get<{role: number}>(url).pipe(
+      map(response => {
+        // Convert numeric role from backend to TypeScript enum
+        const role: TeamRole = response.role;
+        console.log(`✅ User role retrieved: ${role} (${TeamRole[role]})`);
+        return role;
+      }),
+      catchError(error => {
+        console.error('Failed to get user role:', error);
+        return throwError(() => new Error(`Failed to get user role: ${error.message}`));
+      })
+    );
+  }
+
+  /**
    * Gets all invitations for a specific team
    * @param teamId Team ID
    */

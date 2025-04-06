@@ -118,7 +118,7 @@
                [class.active]="file === fileService.currentFile">
             <i class="fas fa-file-alt file-icon"></i>
             <span class="file-name" (click)="openFile(file); activeTabIndex = i">{{ file.name }}</span>
-            <div class="file-actions">
+            <div class="file-actions" *ngif="canEditTeamFiles()">
               <button class="micro-button" (click)="renameFile(file)">
                 <i class="fas fa-pencil-alt"></i>
               </button>
@@ -135,7 +135,9 @@
         </div>
 
         <div class="panel-footer">
-          <button class="add-button" (click)="addNewFile()">
+          <button class="add-button"
+                  [disabled]="!canEditTeamFiles()"
+                  (click)="addNewFile()">
             <i class="fas fa-plus"></i>
             <span>NEW NOTE</span>
           </button>
@@ -235,7 +237,7 @@
             </app-team-role>
 
             <!-- Team Management section, shown only when team management is active -->
-            <div *ngIf="showTeamManagement && isTeamOwner" class="team-management-section">
+            <div *ngIf="showTeamManagement && canManageTeam()" class="team-management-section">
               <h4>TEAM MANAGEMENT</h4>
               <app-team-invitations
                 [team]="currentTeam"
@@ -243,9 +245,14 @@
               </app-team-invitations>
             </div>
 
-            <button class="action-button" (click)="toggleTeamManagement()">
+            <button class="action-button" *ngIf="canManageTeam()" (click)="toggleTeamManagement()">
               <i class="fas" [ngClass]="showTeamManagement ? 'fa-chevron-up' : 'fa-users-cog'"></i>
               <span>{{ showTeamManagement ? 'Hide Team Management' : 'Manage Team' }}</span>
+            </button>
+
+            <button class="action-button" *ngIf="!canManageTeam() && canInviteMembers()" (click)="openInviteDialog()">
+              <i class="fas fa-user-plus"></i>
+              <span>Invite Team Member</span>
             </button>
           </div>
         </div>

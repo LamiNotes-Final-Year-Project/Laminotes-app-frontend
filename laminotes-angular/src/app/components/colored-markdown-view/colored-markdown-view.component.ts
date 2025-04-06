@@ -22,6 +22,8 @@ import { ColoredSectionsOverlayComponent } from '../colored-sections-overlay/col
     .markdown-container {
       position: relative;
       height: 100%;
+      display: flex;
+      flex-direction: column;
       overflow: auto;
     }
 
@@ -30,7 +32,8 @@ import { ColoredSectionsOverlayComponent } from '../colored-sections-overlay/col
       z-index: 1;
       padding: 1rem;
       min-height: 100%;
-      background-color: white;
+      flex: 1;
+      background-color: transparent;
     }
   `]
 })
