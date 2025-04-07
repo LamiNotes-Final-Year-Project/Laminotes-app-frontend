@@ -7,6 +7,7 @@ import { ApiService } from './api.service';
 import { MetadataService } from './metadata.service';
 import { TeamService } from './team.service';
 import {TeamRole} from '../models/team.model';
+import { ElectronService } from '../services/electron.service';
 
 export interface FileInfo {
   path: string;
@@ -31,7 +32,8 @@ export class FileService {
   constructor(
     private apiService: ApiService,
     private metadataService: MetadataService,
-    private teamService: TeamService
+    private teamService: TeamService,
+    private electronService: ElectronService
   ) {
     this.loadFilesFromLocalStorage();
   }
@@ -119,30 +121,63 @@ export class FileService {
   }
 
   saveFile(content: string, newFilePath?: string): Observable<void> {
-    if (this.currentFile) {
-      // Save locally
-      localStorage.setItem(`${this.FILE_CONTENT_PREFIX}${this.currentFile.path}`, content);
+    // Check if running in Electron
+    if (this.electronService.isElectron()) {
+      // Get current file path if available
+      const filePath = this.currentFile ? this.currentFile.path : newFilePath;
 
-      // Get active team if any
-      const activeTeam = this.teamService.activeTeam;
-      const teamId = activeTeam ? activeTeam.id : this.currentFile.team_id;
+      return this.electronService.saveFile(content, filePath).pipe(
+        map(result => {
+          if (result.success) {
+            // Update file reference if needed
+            if (result.filePath && (!this.currentFile || this.currentFile.path !== result.filePath)) {
+              const fileName = result.filePath.split(/[/\\]/).pop() || 'Untitled.md';
 
-      // Update metadata
-      return this.metadataService.addCommit(this.currentFile, content).pipe(
-        switchMap(metadata => {
-          return this.apiService.uploadFile(
-            this.currentFile!.name,
-            content,
-            metadata,
-            teamId // The API service accepts the teamId parameter
-          ).pipe(
-            catchError(error => {
-              console.error('Failed to upload to server:', error);
-              return of(undefined); // Continue even if server upload fails
-            })
-          );
+              this.currentFile = {
+                path: result.filePath,
+                name: fileName
+              };
+
+              // Add to file list if not already there
+              const existingFileIndex = this.filesInDirectory.findIndex(f => f.path === result.filePath);
+              if (existingFileIndex === -1) {
+                this.filesInDirectory.push(this.currentFile);
+                this.saveFilesToLocalStorage();
+              }
+            }
+
+            // Still try to sync with server if online
+            this.syncWithServer(this.currentFile!, content).subscribe();
+
+            return undefined;
+          } else {
+            throw new Error(result.message);
+          }
         })
       );
+    } else {
+      if (this.currentFile) {
+        localStorage.setItem(`${this.FILE_CONTENT_PREFIX}${this.currentFile.path}`, content);
+
+        const activeTeam = this.teamService.activeTeam;
+        const teamId = activeTeam ? activeTeam.id : this.currentFile.team_id;
+
+        return this.metadataService.addCommit(this.currentFile, content).pipe(
+          switchMap(metadata => {
+            return this.apiService.uploadFile(
+              this.currentFile!.name,
+              content,
+              metadata,
+              teamId
+            ).pipe(
+              catchError(error => {
+                console.error('Failed to upload to server:', error);
+                return of(undefined);
+              })
+            );
+          })
+        );
+      }
     }
 
     if (newFilePath) {
@@ -196,6 +231,33 @@ export class FileService {
           catchError(error => {
             console.error('Failed to upload new file to server:', error);
             return of(undefined); // Continue even if server upload fails
+          })
+        );
+      })
+    );
+  }
+
+  private syncWithServer(file: FileInfo, content: string): Observable<void> {
+    const activeTeam = this.teamService.activeTeam;
+    const teamId = activeTeam ? activeTeam.id : file.team_id;
+
+    return this.metadataService.loadMetadata(file).pipe(
+      switchMap(metadata => {
+        if (!metadata) {
+          return this.metadataService.createMetadata(file);
+        }
+        return of(metadata);
+      }),
+      switchMap(metadata => {
+        return this.apiService.uploadFile(
+          file.name,
+          content,
+          metadata,
+          teamId
+        ).pipe(
+          catchError(error => {
+            console.error('Failed to sync with server:', error);
+            return of(undefined);
           })
         );
       })
