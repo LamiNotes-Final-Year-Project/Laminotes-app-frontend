@@ -6,6 +6,8 @@ import * as url from 'url';
 let mainWindow: BrowserWindow | null = null;
 
 function createWindow() {
+  console.log('Creating window...');
+
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -16,19 +18,36 @@ function createWindow() {
     }
   });
 
-  mainWindow.loadURL(
-    url.format({
-      pathname: path.join(__dirname, 'dist/laminotes-angular/index.html'),
-      protocol: 'file:',
-      slashes: true,
-    })
-  );
+  // Create a test HTML file
+  const testHtmlPath = path.join(app.getAppPath(), 'test.html');
+  fs.writeFileSync(testHtmlPath, `
+    <!DOCTYPE html>
+    <html>
+      <head><title>Electron Test</title></head>
+      <body>
+        <h1>Electron Test Page</h1>
+        <p>If you can see this, Electron is working correctly!</p>
+      </body>
+    </html>
+  `);
+
+  //mainWindow.loadFile(testHtmlPath);
+
+  // Option 2 (comment out if using Option 1): Load Angular app
+   mainWindow.loadURL(
+     url.format({
+       pathname: path.join(__dirname, '../../dist/laminotes-angular/index.html'),
+       protocol: 'file:',
+       slashes: true,
+     })
+   );
+
+  // Open dev tools
+  mainWindow.webContents.openDevTools();
 
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
-
-  setupIpcHandlers();
 }
 
 function setupIpcHandlers() {
@@ -69,7 +88,6 @@ function setupIpcHandlers() {
       console.error('Error saving file:', error);
       return {
         success: false,
-        // Use type assertion to access error.message
         message: `Error saving file: ${(error as Error).message || 'Unknown error'}`
       };
     }
@@ -119,20 +137,26 @@ function setupIpcHandlers() {
   });
 }
 
-// Initialize Electron app
-app.on('ready', createWindow);
+// PROPER EVENT SEQUENCE
+// Set up IPC handlers first, before any windows are created
+setupIpcHandlers();
 
+// Wait for the app to be ready, then create window
+app.whenReady().then(() => {
+  console.log('App is ready');
+  createWindow();
+
+  // On macOS, recreate windows when dock icon is clicked
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
+  });
+});
+
+// Quit when all windows are closed, except on macOS
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
   }
 });
-
-app.on('activate', () => {
-  if (mainWindow === null) {
-    createWindow();
-  }
-});
-
-
-

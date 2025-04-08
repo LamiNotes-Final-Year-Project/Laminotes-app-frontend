@@ -1,12 +1,15 @@
 {
   "name": "laminotes-angular",
   "version": "0.0.0",
+  "main": "dist/electron/main.electron.js",
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
-    "build": "ng build",
     "watch": "ng build --watch --configuration development",
-    "test": "ng test"
+    "test": "ng test",
+    "build": "ng build --base-href ./",
+    "electron:build": "tsc -p electron/tsconfig.json",
+    "electron:serve": "npm run build && npm run electron:build && electron ."
   },
   "private": true,
   "dependencies": {

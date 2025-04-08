@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "es2016",
+    "module": "commonjs",
+    "outDir": "../dist/electron",
+    "sourceMap": true,
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "strict": false,
+    "baseUrl": ".",
+    "paths": {
+      "*": ["../node_modules/*"]
+    }
+  },
+  "include": [
+    "**/*.ts"
+  ]
+}
