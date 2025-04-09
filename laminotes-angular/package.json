@@ -1,15 +1,18 @@
 {
   "name": "laminotes-angular",
   "version": "0.0.0",
-  "main": "dist/electron/main.electron.js",
+  "main": "electron/main.js",
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "build": "ng build --base-href ./",
-    "electron:build": "tsc -p electron/tsconfig.json",
-    "electron:serve": "npm run build && npm run electron:build && electron ."
+    "electron:dev": "ng build && NODE_ENV=development electron .",
+    "electron:build": "ng build --base-href ./ && electron-builder build",
+    "electron:start": "wait-on tcp:4200 && electron .",
+    "electron:local": "npm run build && electron .",
+    "electron:serve": "concurrently \"ng serve\" \"npm run electron:start\""
   },
   "private": true,
   "dependencies": {
@@ -39,6 +42,7 @@
     "@angular/compiler-cli": "^19.1.0",
     "@capacitor/cli": "^7.0.1",
     "@types/jasmine": "~5.1.0",
+    "concurrently": "^9.1.2",
     "electron": "^35.1.4",
     "electron-builder": "^26.0.12",
     "jasmine-core": "~5.5.0",

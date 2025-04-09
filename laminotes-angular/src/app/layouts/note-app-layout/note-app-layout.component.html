@@ -106,7 +106,10 @@
             <h3>{{ fileService.getCurrentDirectoryName() }}</h3>
           </div>
           <div class="header-actions">
-            <button class="icon-action" title="New Folder">
+            <button class="icon-action" title="Open Folder" (click)="selectDirectory()">
+              <i class="fas fa-folder-open"></i>
+            </button>
+            <button class="icon-action" title="New Folder" (click)="createNewFolder()">
               <i class="fas fa-folder-plus"></i>
             </button>
           </div>
@@ -118,11 +121,11 @@
                [class.active]="file === fileService.currentFile">
             <i class="fas fa-file-alt file-icon"></i>
             <span class="file-name" (click)="openFile(file); activeTabIndex = i">{{ file.name }}</span>
-            <div class="file-actions" *ngif="canEditTeamFiles()">
-              <button class="micro-button" (click)="renameFile(file)">
+            <div class="file-actions" *ngIf="canEditTeamFiles()">
+              <button class="micro-button" title="Rename" (click)="renameFile(file)">
                 <i class="fas fa-pencil-alt"></i>
               </button>
-              <button class="micro-button" title="Delete">
+              <button class="micro-button" title="Delete" (click)="deleteFile(file)">
                 <i class="fas fa-trash"></i>
               </button>
             </div>

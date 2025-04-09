@@ -1,4 +1,9 @@
-// Improved TeamService with better owner recognition
+/**
+ * Team management service.
+ * 
+ * Handles team operations, team switching, role management, and team directory tracking.
+ * Provides team context for collaboration and file organization.
+ */
 import { Injectable } from '@angular/core';
 import { BehaviorSubject, Observable, of, forkJoin } from 'rxjs';
 import { catchError, switchMap, tap, map } from 'rxjs/operators';
@@ -7,16 +12,31 @@ import { ApiService } from './api.service';
 import { AuthService } from './auth.service';
 import { NotificationService } from './notification.service';
 
+/**
+ * Service responsible for team management operations.
+ * Handles team creation, selection, role management, and team directory tracking.
+ */
 @Injectable({
   providedIn: 'root'
 })
 export class TeamService {
+  /** LocalStorage key for storing the active team */
   private readonly ACTIVE_TEAM_KEY = 'active_team';
+  
+  /** Subject for tracking and broadcasting active team changes */
   private activeTeamSubject = new BehaviorSubject<Team | null>(null);
+  
+  /** Cached current user ID for permission checks */
   private currentUserId: string | null = null;
+  
+  /** Cache of user roles in teams for performance optimization */
   private roleCache: Map<string, TeamRole> = new Map<string, TeamRole>();
+  
+  /** Expiry timestamps for role cache entries */
   private roleCacheExpiry: Map<string, number> = new Map<string, number>();
-  private readonly CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
+  
+  /** Duration for which role cache entries remain valid (5 minutes) */
+  private readonly CACHE_DURATION_MS = 5 * 60 * 1000;
 
   constructor(
     private apiService: ApiService,
@@ -50,6 +70,11 @@ export class TeamService {
     });
   }
 
+  /**
+   * Loads the active team from local storage on service initialization.
+   * Attempts to parse the stored team JSON and sets it as the active team.
+   * Removes invalid stored team data if it cannot be parsed.
+   */
   private loadStoredTeam(): void {
     const storedTeam = localStorage.getItem(this.ACTIVE_TEAM_KEY);
     if (storedTeam) {
@@ -63,16 +88,89 @@ export class TeamService {
     }
   }
 
+  /**
+   * Observable stream of active team changes.
+   * Components can subscribe to this to react to team context changes.
+   * 
+   * @returns Observable of the current active team or null if in personal context
+   */
   get activeTeam$(): Observable<Team | null> {
     return this.activeTeamSubject.asObservable();
   }
 
+  /**
+   * Getter for the currently active team.
+   * 
+   * @returns The current active team or null if in personal context
+   */
   get activeTeam(): Team | null {
     return this.activeTeamSubject.value;
   }
 
-  setActiveTeam(team: Team | null): Observable<boolean> {
+  /**
+   * Associates a local directory path with a team for file storage.
+   * Updates the team object, active team if applicable, and persists the directory
+   * association in localStorage for future sessions.
+   * 
+   * @param team The team to set directory for
+   * @param directoryPath The local directory path where team files will be stored
+   * @returns Observable emitting true if successful, false otherwise
+   */
+  setTeamDirectory(team: Team, directoryPath: string): Observable<boolean> {
+    if (!team) return of(false);
+    
+    // Update the team object with the directory
+    team.localDirectory = directoryPath;
+    
+    // If this is the active team, update the active team subject
+    if (this.activeTeam && this.activeTeam.id === team.id) {
+      this.activeTeamSubject.next(team);
+    }
+    
+    // Update in localStorage
+    if (this.activeTeam && this.activeTeam.id === team.id) {
+      localStorage.setItem(this.ACTIVE_TEAM_KEY, JSON.stringify(team));
+    }
+    
+    console.log(`Set local directory for team "${team.name}": ${directoryPath}`);
+    
+    // Store the team directory mapping in a separate localStorage item
+    const teamDirKey = `team_dir_${team.id}`;
+    localStorage.setItem(teamDirKey, directoryPath);
+    
+    return of(true);
+  }
+  
+  /**
+   * Retrieves the configured local directory path for a specific team.
+   * First checks the active team for efficiency, then falls back to localStorage.
+   * 
+   * @param teamId The team ID to get the directory for
+   * @returns The local directory path as a string, or null if no directory is set
+   */
+  getTeamDirectory(teamId: string): string | null {
+    if (!teamId) return null;
+    
+    // Try to get from active team first
+    if (this.activeTeam && this.activeTeam.id === teamId && this.activeTeam.localDirectory) {
+      return this.activeTeam.localDirectory;
+    }
+    
+    // Try to get from localStorage
+    const teamDirKey = `team_dir_${teamId}`;
+    return localStorage.getItem(teamDirKey);
+  }
 
+  /**
+   * Changes the active team context for the current user.
+   * This updates both the local state and the backend context via API.
+   * When a team is activated, the authentication token is updated to include team context.
+   * When setting to null, reverts to personal context.
+   * 
+   * @param team The team to activate, or null to switch to personal context
+   * @returns Observable emitting true if team switch was successful, false otherwise
+   */
+  setActiveTeam(team: Team | null): Observable<boolean> {
     // clear role cache when swapping team
     this.clearRoleCache();
 
@@ -119,6 +217,14 @@ export class TeamService {
     }
   }
 
+  /**
+   * Creates a new team with the specified name.
+   * The current user becomes the team owner automatically.
+   * Handles notification of success or failure.
+   * 
+   * @param name The display name for the new team
+   * @returns Observable emitting the created team or null if creation failed
+   */
   createTeam(name: string): Observable<Team | null> {
     console.log(`🏢 Creating new team: ${name}`);
     return this.apiService.createTeam(name).pipe(
@@ -138,8 +244,12 @@ export class TeamService {
   }
 
   /**
-   * Explicitly mark the current user as the owner of a team
-   * This helps maintain local state in sync with backend
+   * Explicitly marks the current user as the owner of a team.
+   * This helps maintain local state in sync with backend data.
+   * When creating a new team, this ensures proper ownership is reflected
+   * in the local team object even if backend response is incomplete.
+   * 
+   * @param team The team object to update with owner information
    */
   private setCurrentUserAsOwner(team: Team): void {
     // Get current user ID if not already available
@@ -159,6 +269,12 @@ export class TeamService {
     }
   }
 
+  /**
+   * Retrieves all teams that the current user is a member of.
+   * Handles error states gracefully by returning an empty array.
+   * 
+   * @returns Observable emitting an array of teams the user belongs to
+   */
   getUserTeams(): Observable<Team[]> {
     console.log('📋 Fetching user teams');
     return this.apiService.getUserTeams().pipe(
@@ -174,8 +290,14 @@ export class TeamService {
   }
 
   /**
-   * Get User's role in a specific team
-   * @param teamId
+   * Determines the current user's role within a specific team.
+   * Uses a caching strategy to minimize API calls for frequent permission checks.
+   * 
+   * Implements optimization by first checking if user is the team owner,
+   * which can be determined from local data without an API call.
+   * 
+   * @param teamId The ID of the team to check roles for
+   * @returns Observable emitting the user's role in the specified team
    */
   getUserRoleInTeam(teamId: string): Observable<TeamRole> {
     if (!teamId) {
@@ -243,7 +365,8 @@ export class TeamService {
 
 
   /**
-   * Clears the role cache
+   * Clears the role cache.
+   * This is called when switching teams to ensure fresh permission checks.
    */
   clearRoleCache(): void {
     this.roleCache.clear();
@@ -251,7 +374,12 @@ export class TeamService {
   }
 
   /**
-   * Helper method to cache a role
+   * Helper method to cache a user's role in a team.
+   * Stores both the role and its expiration timestamp to implement
+   * time-based cache invalidation.
+   * 
+   * @param teamId The team ID to cache the role for
+   * @param role The role to cache
    */
   private cacheRole(teamId: string, role: TeamRole): void {
     this.roleCache.set(teamId, role);
@@ -260,8 +388,10 @@ export class TeamService {
   }
 
   /**
-   * Makes sure we have the current user ID
-   * Returns an observable that completes when user ID is available
+   * Makes sure the current user ID is available, fetching it from API if needed.
+   * This is a utility method for permissions and ownership checks.
+   * 
+   * @returns Observable that resolves to the current user ID or null if unavailable
    */
   private ensureCurrentUserId(): Observable<string | null> {
     if (this.currentUserId) {

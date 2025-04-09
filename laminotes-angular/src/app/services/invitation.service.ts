@@ -1,4 +1,10 @@
-// src/app/services/invitation.service.ts
+/**
+ * Team invitation management service.
+ * 
+ * Handles the creation, retrieval, acceptance, declining, and cancellation
+ * of team invitations. This service provides the interface for managing
+ * the team membership invitation workflow.
+ */
 import { Injectable } from '@angular/core';
 import { Observable, of, throwError } from 'rxjs';
 import { map, catchError, tap } from 'rxjs/operators';
@@ -7,6 +13,10 @@ import { NotificationService } from './notification.service';
 import { TeamInvitation, InvitationStatus } from '../models/team-invitation.model';
 import { TeamRole } from '../models/team.model';
 
+/**
+ * Service responsible for managing team invitations.
+ * Handles sending, receiving, and responding to team membership invitations.
+ */
 @Injectable({
   providedIn: 'root'
 })
@@ -18,10 +28,15 @@ export class InvitationService {
   ) { }
 
   /**
-   * Create a new team invitation
-   * @param teamId The ID of the team
-   * @param email Email of the user to invite
-   * @param role Role to assign to the invited user
+   * Creates a new team invitation and sends it to the specified email address.
+   * Invitations include the role that will be assigned to the user upon acceptance.
+   * Provides user feedback through notification service.
+   * 
+   * @param teamId The ID of the team to invite the user to
+   * @param email Email address of the user to invite
+   * @param role Role to assign to the invited user upon acceptance
+   * @returns Observable emitting the created invitation if successful
+   * @throws Error if invitation creation fails
    */
   createInvitation(teamId: string, email: string, role: TeamRole): Observable<TeamInvitation> {
     console.log(`🔄 Creating invitation for ${email} to team ${teamId} with role ${role}`);
@@ -40,7 +55,11 @@ export class InvitationService {
   }
 
   /**
-   * Get all pending invitations for the current user
+   * Retrieves all pending invitations for the currently authenticated user.
+   * Used to display invitation notifications and allow users to respond to them.
+   * 
+   * @returns Observable emitting an array of pending team invitations
+   * @throws Error if invitation retrieval fails
    */
   getMyInvitations(): Observable<TeamInvitation[]> {
     console.log(`🔄 Fetching invitations for current user`);
@@ -58,8 +77,12 @@ export class InvitationService {
   }
 
   /**
-   * Get all invitations sent for a specific team
-   * @param teamId The ID of the team
+   * Retrieves all invitations sent for a specific team.
+   * Used by team administrators to manage pending invitations.
+   * 
+   * @param teamId The ID of the team to get invitations for
+   * @returns Observable emitting an array of team invitations
+   * @throws Error if invitation retrieval fails
    */
   getTeamInvitations(teamId: string): Observable<TeamInvitation[]> {
     console.log(`🔄 Fetching invitations for team ${teamId}`);
@@ -77,8 +100,12 @@ export class InvitationService {
   }
 
   /**
-   * Accept an invitation
-   * @param invitationId The ID of the invitation
+   * Accepts a team invitation, adding the current user to the team.
+   * This updates the invitation status on the backend and notifies the user of success.
+   * 
+   * @param invitationId The ID of the invitation to accept
+   * @returns Observable that completes when the invitation is accepted
+   * @throws Error if accepting the invitation fails
    */
   acceptInvitation(invitationId: string): Observable<void> {
     console.log(`🔄 Accepting invitation ${invitationId}`);
@@ -97,8 +124,12 @@ export class InvitationService {
   }
 
   /**
-   * Decline an invitation
-   * @param invitationId The ID of the invitation
+   * Declines a team invitation, rejecting the team membership offer.
+   * Updates the invitation status on the backend and notifies the user.
+   * 
+   * @param invitationId The ID of the invitation to decline
+   * @returns Observable that completes when the invitation is declined
+   * @throws Error if declining the invitation fails
    */
   declineInvitation(invitationId: string): Observable<void> {
     console.log(`🔄 Declining invitation ${invitationId}`);
@@ -117,8 +148,13 @@ export class InvitationService {
   }
 
   /**
-   * Cancel an invitation (for team owners/admins)
-   * @param invitationId The ID of the invitation
+   * Cancels a pending invitation that was previously sent.
+   * This operation is restricted to team owners and administrators.
+   * Removes the invitation from the system and notifies the user.
+   * 
+   * @param invitationId The ID of the invitation to cancel
+   * @returns Observable that completes when the invitation is cancelled
+   * @throws Error if cancelling the invitation fails
    */
   cancelInvitation(invitationId: string): Observable<void> {
     console.log(`🔄 Cancelling invitation ${invitationId}`);

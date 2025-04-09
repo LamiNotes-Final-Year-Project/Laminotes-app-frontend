@@ -1,10 +1,11 @@
 // src/app/components/team-selector/team-selector.component.ts
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { TeamService } from '../../services/team.service';
 import { Team } from '../../models/team.model';
 import { NotificationService } from '../../services/notification.service';
+import { ElectronService } from '../../services/electron.service';
 
 @Component({
   selector: 'app-team-selector',
@@ -302,7 +303,9 @@ export class TeamSelectorComponent implements OnInit {
 
   constructor(
     private teamService: TeamService,
-    private notificationService: NotificationService
+    private notificationService: NotificationService,
+    private electronService: ElectronService,
+    private cdr: ChangeDetectorRef
   ) {}
 
   ngOnInit(): void {
@@ -330,8 +333,70 @@ export class TeamSelectorComponent implements OnInit {
   }
 
   selectTeam(team: Team | null): void {
-    this.teamService.setActiveTeam(team).subscribe();
     this.isDropdownOpen = false;
+    
+    // For switching to personal files, no directory needed
+    if (!team) {
+      this.teamService.setActiveTeam(null).subscribe(success => {
+        if (success) {
+          this.cdr.detectChanges();
+        }
+      });
+      return;
+    }
+    
+    // Always check if directory exists for teams in Electron mode
+    if (this.electronService.isElectron()) {
+      const existingDir = this.teamService.getTeamDirectory(team.id);
+      
+      // If no directory set, or we want to force directory selection
+      if (!existingDir) {
+        this.notificationService.info(`Please select a local directory for team "${team.name}"`);
+        console.log('Prompting for team directory selection');
+        
+        // Clear current directory selection logic 
+        this.electronService.selectDirectory().subscribe({
+          next: result => {
+            console.log('Directory selection result:', result);
+            
+            if (result.success && result.dirPath) {
+              console.log(`Selected directory: ${result.dirPath}`);
+              
+              // Set the directory for the team
+              this.teamService.setTeamDirectory(team, result.dirPath).subscribe(() => {
+                console.log(`Team directory set to: ${result.dirPath}`);
+                
+                // After setting directory, activate the team
+                this.teamService.setActiveTeam(team).subscribe(success => {
+                  if (success) {
+                    this.notificationService.success(`Switched to team "${team.name}" with directory: ${result.dirPath}`);
+                    this.cdr.detectChanges();
+                  }
+                });
+              });
+            } else {
+              this.notificationService.warning('You need to select a directory for team files');
+            }
+          },
+          error: err => {
+            console.error('Error selecting directory:', err);
+            this.notificationService.error('Failed to select directory');
+          }
+        });
+        return;
+      }
+      
+      // If directory is already set, just switch to the team
+      console.log(`Team "${team.name}" already has directory: ${existingDir}`);
+      this.notificationService.info(`Using existing directory for team "${team.name}": ${existingDir}`);
+    }
+    
+    // Continue with normal team switching
+    this.teamService.setActiveTeam(team).subscribe(success => {
+      if (success) {
+        this.cdr.detectChanges();
+      }
+    });
   }
 
   openCreateTeamModal(): void {
@@ -351,7 +416,40 @@ export class TeamSelectorComponent implements OnInit {
         if (team) {
           this.teams.push(team);
           this.closeModals();
-          this.teamService.setActiveTeam(team).subscribe();
+          
+          // For Electron, prompt to select a directory for the team
+          if (this.electronService.isElectron()) {
+            this.notificationService.info('Please select a local directory for this team');
+            
+            // Prompt to select directory
+            this.electronService.selectDirectory().subscribe({
+              next: result => {
+                if (result.success && result.dirPath) {
+                  // Set the directory for the team
+                  this.teamService.setTeamDirectory(team, result.dirPath).subscribe(() => {
+                    // After setting directory, activate the team
+                    this.teamService.setActiveTeam(team).subscribe(success => {
+                      if (success) {
+                        this.notificationService.success(`Created team "${team.name}" with directory: ${result.dirPath}`);
+                        this.cdr.detectChanges();
+                      }
+                    });
+                  });
+                } else {
+                  this.notificationService.warning('Team created but no directory was selected. You can set it later.');
+                  this.teamService.setActiveTeam(team).subscribe();
+                }
+              },
+              error: err => {
+                console.error('Error selecting directory:', err);
+                this.notificationService.error('Failed to select directory, but team was created');
+                this.teamService.setActiveTeam(team).subscribe();
+              }
+            });
+          } else {
+            // In browser mode, just activate the team
+            this.teamService.setActiveTeam(team).subscribe();
+          }
         }
       });
     }

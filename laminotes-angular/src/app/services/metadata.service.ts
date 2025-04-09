@@ -1,3 +1,10 @@
+/**
+ * File metadata management service.
+ * 
+ * Handles the creation, storage, retrieval, and synchronization of
+ * file metadata between local storage and the backend server.
+ * This service maintains file history and tracking information.
+ */
 import { Injectable } from '@angular/core';
 import { Observable, of, from } from 'rxjs';
 import { map, catchError, switchMap } from 'rxjs/operators';
@@ -7,17 +14,32 @@ import { FileMetadata, FileMetadataImpl } from '../models/file-metadata';
 import { ApiService } from './api.service';
 import { FileInfo } from './file.service';
 
+/**
+ * Service responsible for managing file metadata.
+ * Provides methods for creating, loading, saving, and synchronizing
+ * metadata that tracks file properties and history.
+ */
 @Injectable({
   providedIn: 'root'
 })
 export class MetadataService {
+  /** Prefix used for storing metadata keys in localStorage */
   private readonly METADATA_STORAGE_PREFIX = 'metadata_';
 
+  /**
+   * Creates a new MetadataService instance.
+   * 
+   * @param apiService Service for communicating with the backend API
+   */
   constructor(private apiService: ApiService) { }
 
   /**
-   * Load metadata for a file from local storage
-   * @param file The file information
+   * Loads metadata for a file from local storage or server.
+   * First attempts to retrieve metadata from localStorage, and if not found,
+   * falls back to retrieving it from the backend server.
+   * 
+   * @param file The file information object containing path and name
+   * @returns Observable emitting the file metadata or null if not found/error
    */
   loadMetadata(file: FileInfo): Observable<FileMetadata | null> {
     const key = `${this.METADATA_STORAGE_PREFIX}${file.path}`;
@@ -37,8 +59,11 @@ export class MetadataService {
   }
 
   /**
-   * Create new metadata for a file
-   * @param file The file information
+   * Creates new metadata for a file and persists it to storage.
+   * Generates a new UUID for the file and records creation timestamp.
+   * 
+   * @param file The file information object to create metadata for
+   * @returns Observable emitting the newly created file metadata
    */
   createMetadata(file: FileInfo): Observable<FileMetadata> {
     const metadata = new FileMetadataImpl(
@@ -53,9 +78,13 @@ export class MetadataService {
   }
 
   /**
-   * Save metadata to local storage
-   * @param file The file information
-   * @param metadata The metadata to save
+   * Persists file metadata to local storage.
+   * Uses a consistent key pattern to store and retrieve metadata.
+   * Handles potential storage errors gracefully.
+   * 
+   * @param file The file information object containing the file path
+   * @param metadata The metadata object to save
+   * @returns Observable that completes when the save operation is done
    */
   saveMetadata(file: FileInfo, metadata: FileMetadata): Observable<void> {
     const key = `${this.METADATA_STORAGE_PREFIX}${file.path}`;
@@ -69,10 +98,14 @@ export class MetadataService {
   }
 
   /**
-   * Add a commit to file metadata
-   * @param file The file information
-   * @param content The file content
-   * @param existingMetadata Optional existing metadata
+   * Updates file metadata to track changes (commits).
+   * Retrieves or creates metadata as needed, updates the last modified timestamp,
+   * and persists the updated metadata to storage.
+   * 
+   * @param file The file information object
+   * @param content The current file content
+   * @param existingMetadata Optional existing metadata to update (optimization)
+   * @returns Observable emitting the updated file metadata
    */
   addCommit(file: FileInfo, content: string, existingMetadata?: FileMetadata): Observable<FileMetadata> {
     return (existingMetadata ? of(existingMetadata) : this.loadMetadata(file)).pipe(
@@ -99,18 +132,24 @@ export class MetadataService {
   }
 
   /**
-   * Upload file metadata to the backend
-   * @param filename The file name
-   * @param content The file content
-   * @param metadata The file metadata
+   * Uploads file content and its metadata to the backend server.
+   * Delegates to the API service for actual network communication.
+   * 
+   * @param filename The name of the file to upload
+   * @param content The content of the file
+   * @param metadata The metadata associated with the file
+   * @returns Observable that completes when the upload is successful
    */
   uploadFileMetadataToBackend(filename: string, content: string, metadata: FileMetadata): Observable<void> {
     return this.apiService.uploadFile(filename, content, metadata);
   }
 
   /**
-   * Download file metadata from the backend
-   * @param filename The file name
+   * Downloads file metadata from the backend server.
+   * Used when local metadata is not available or may be outdated.
+   * 
+   * @param filename The name of the file to get metadata for
+   * @returns Observable emitting the file metadata or null if not found
    */
   downloadFileMetadata(filename: string): Observable<FileMetadata | null> {
     return this.apiService.getFileMetadata(filename);

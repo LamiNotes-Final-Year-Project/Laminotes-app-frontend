@@ -230,7 +230,6 @@ export class ApiService {
     );
   }
 
-  // Team Invitation Methods
   /**
    * Creates a team invitation
    * @param teamId Team ID
