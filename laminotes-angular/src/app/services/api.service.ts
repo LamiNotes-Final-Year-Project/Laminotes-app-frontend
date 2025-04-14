@@ -12,10 +12,105 @@ import {InvitationStatus, TeamInvitation} from '../models/team-invitation.model'
   providedIn: 'root'
 })
 export class ApiService {
-  public readonly baseUrl = 'http://127.0.0.1:9090';
-  private readonly BASE_URL = 'http://127.0.0.1:9090'; // TODO: Move to environment config
+  public readonly baseUrl = 'http://35.246.27.92:9090';
 
   constructor(private http: HttpClient) { }
+  
+  /**
+   * Gets team members for a specific team
+   * @param teamId The ID of the team
+   */
+  getTeamMembers(teamId: string): Observable<any[]> {
+    const url = `${this.baseUrl}/teams/${teamId}/members`;
+    console.log(`👥 Fetching team members for team: ${teamId}`);
+    
+    return this.http.get<any[]>(url).pipe(
+      tap(members => console.log(`✅ Fetched ${members.length} team members`)),
+      catchError(error => {
+        console.error('Failed to fetch team members:', error);
+        // Return empty array instead of error for graceful degradation
+        return of([]);
+      })
+    );
+  }
+  
+  /**
+   * Gets user details by user ID
+   * @param userId The ID of the user
+   */
+  getUserById(userId: string): Observable<any> {
+    const url = `${this.baseUrl}/users/${userId}`;
+    console.log(`👤 Fetching user details for: ${userId}`);
+    
+    return this.http.get<any>(url).pipe(
+      tap(user => console.log(`✅ User details fetched`)),
+      catchError(error => {
+        console.error('Failed to fetch user details:', error);
+        // Return basic user object instead of error
+        return of({
+          user_id: userId,
+          email: userId, // Use ID as email fallback
+          display_name: 'Unknown User'
+        });
+      })
+    );
+  }
+  
+  /**
+   * Updates a team member's role
+   * @param teamId The ID of the team
+   * @param userId The ID of the user to update
+   * @param role The new role to assign
+   */
+  updateTeamMemberRole(teamId: string, userId: string, role: TeamRole): Observable<any> {
+    const url = `${this.baseUrl}/teams/${teamId}/members/${userId}`;
+    console.log(`🔄 Updating role for user ${userId} in team ${teamId} to ${role}`);
+    
+    return this.http.put(url, { role }, {
+      headers: new HttpHeaders({ 'Content-Type': 'application/json' })
+    }).pipe(
+      tap(() => console.log(`✅ Team member role updated`)),
+      catchError(error => {
+        console.error('Failed to update team member role:', error);
+        return throwError(() => new Error(`Failed to update role: ${error.message}`));
+      })
+    );
+  }
+  
+  /**
+   * Removes a member from a team
+   * @param teamId The ID of the team
+   * @param userId The ID of the user to remove
+   */
+  removeTeamMember(teamId: string, userId: string): Observable<any> {
+    const url = `${this.baseUrl}/teams/${teamId}/members/${userId}`;
+    console.log(`👋 Removing user ${userId} from team ${teamId}`);
+    
+    return this.http.delete(url).pipe(
+      tap(() => console.log(`✅ Team member removed`)),
+      catchError(error => {
+        console.error('Failed to remove team member:', error);
+        return throwError(() => new Error(`Failed to remove team member: ${error.message}`));
+      })
+    );
+  }
+  
+  /**
+   * Deletes a team completely
+   * @param teamId The ID of the team to delete
+   */
+  deleteTeam(teamId: string): Observable<any> {
+    const url = `${this.baseUrl}/teams/${teamId}`;
+    console.log(`🗑️ Deleting team: ${teamId}`);
+    
+    return this.http.delete(url).pipe(
+      tap(() => console.log(`✅ Team deleted`)),
+      catchError(error => {
+        console.error('Failed to delete team:', error);
+        return throwError(() => new Error(`Failed to delete team: ${error.message}`));
+      })
+    );
+  }
 
   /**
    * Uploads a file to the server

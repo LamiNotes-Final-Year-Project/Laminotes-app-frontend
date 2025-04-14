@@ -74,12 +74,10 @@ export class NoteAppLayoutComponent implements OnInit, OnDestroy {
   allFiles: FileInfo[] = [];
   sharedFiles: FileInfo[] = [];
 
-  // Mock organizations TODO: implement full organisation sync
-  organizations: any[] = [
-    { name: 'Design Team', memberCount: 8, color: '#3498db' },
-    { name: 'Marketing', memberCount: 12, color: '#e74c3c' },
-    { name: 'Development', memberCount: 15, color: '#2ecc71' }
-  ];
+  // Teams data for UI
+  teams: Team[] = [];
+  teamRoles: Record<string, TeamRole> = {};
+  pendingInvitationsPreview: any[] = [];
 
   // User colors for collaborative editing visualization
   userColors: Record<string, string> = {
@@ -114,9 +112,39 @@ export class NoteAppLayoutComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit(): void {
-    // Checks if there are any files already
-    this.fileService.refreshFileList();
+    // Try to restore active team first, which might set directories
+    this.teamService.activeTeam$.subscribe(team => {
+      this.currentTeam = team;
+      if (team) {
+        // First validate team directory if in Electron environment
+        if (this.electronService.isElectron()) {
+          const teamDir = this.teamService.getTeamDirectory(team.id);
+          if (teamDir) {
+            console.log(`Validating team directory on init: ${teamDir}`);
+            this.electronService.checkFileExists(teamDir).subscribe(exists => {
+              if (!exists) {
+                console.warn(`Team directory ${teamDir} not found during initialization`);
+                // Don't show notification yet, the file service will handle it when refreshing
+              }
+            });
+          }
+        }
+        
+        this.fetchTeamRole(team.id);
+        
+        // If team directory is set, this will use it
+        this.fileService.refreshFileList();
+      } else {
+        // Reset role when no team is active
+        this.currentTeamRole = TeamRole.Viewer;
+        this.isTeamOwner = false;
+        
+        // Refresh files for personal context
+        this.fileService.refreshFileList();
+      }
+    });
 
+    // Check authentication state
     this.authService.isAuthenticated().subscribe(isAuthenticated => {
       if (isAuthenticated) {
         this.checkForPendingInvitations();
@@ -133,17 +161,6 @@ export class NoteAppLayoutComponent implements OnInit, OnDestroy {
 
     // Initialize the files for each tab view
     this.loadAllNotes(); // Load immediately since 'notes' is the default tab
-
-    this.teamService.activeTeam$.subscribe(team => {
-      this.currentTeam = team;
-      if (team) {
-        this.fetchTeamRole(team.id);
-      } else {
-        // Reset role when no team is active
-        this.currentTeamRole = TeamRole.Viewer;
-        this.isTeamOwner = false;
-      }
-    });
   }
   
   // Add method to prompt for base directory
@@ -788,19 +805,67 @@ export class NoteAppLayoutComponent implements OnInit, OnDestroy {
 
 
   private loadSharedNotes(): void {
-    this.fileService.loadSharedFiles().subscribe({
-      next: (files) => {
-        this.sharedFiles = files;
+    // Load teams
+    this.teamService.getUserTeams().subscribe({
+      next: (teams) => {
+        this.teams = teams;
+        
+        // Get role for each team
+        teams.forEach(team => {
+          this.teamService.getUserRoleInTeam(team.id).subscribe(role => {
+            this.teamRoles[team.id] = role;
+          });
+        });
       },
       error: (error) => {
-        console.error('Error loading shared files:', error);
-        this.notificationService.error(`Error loading shared files: ${error.message}`);
+        console.error('Error loading teams:', error);
+        this.notificationService.error(`Error loading teams: ${error.message}`);
       }
     });
+    
+    // Load shared files (mock data for now, TODO: implement sharing API)
+    const mockSharedFiles = [
+      { 
+        name: 'Project Plan.md', 
+        owner: 'Jane Smith',
+        lastModified: Date.now() - 86400000, // 1 day ago
+        path: 'shared/project-plan.md',
+        content: '# Project Plan\n\nThis is a shared document...'
+      },
+      { 
+        name: 'Meeting Notes.md', 
+        owner: 'John Doe',
+        lastModified: Date.now() - 172800000, // 2 days ago
+        path: 'shared/meeting-notes.md',
+        content: '# Meeting Notes\n\nAttendees: John, Jane, Bob...'
+      }
+    ];
+    
+    this.sharedFiles = mockSharedFiles;
+    
+    // Load invitation previews (mock data for now, TODO: implement invitation API)
+    if (this.authService.isAuthenticated()) {
+      // Mock invitations for UI testing
+      const mockInvitations = [
+        {
+          id: '1',
+          team_id: 'team1',
+          team_name: 'Design Team',
+          invited_email: 'currentuser@example.com',
+          invited_by_email: 'john@example.com',
+          role: TeamRole.Contributor,
+          status: InvitationStatus.Pending,
+          created_at: new Date().toISOString()
+        }
+      ];
+      
+      this.pendingInvitationsPreview = mockInvitations;
+      this.hasPendingInvitations = mockInvitations.length > 0;
+    }
   }
 
   checkForPendingInvitations(): void {
-    if (this.authService.isLoggedIn) {
+    if (this.authService.isAuthenticated()) {
       this.invitationService.getMyInvitations().subscribe({
         next: (invitations) => {
           // Check if there are any pending invitations
@@ -830,8 +895,122 @@ export class NoteAppLayoutComponent implements OnInit, OnDestroy {
   }
 
   // Helper methods
-  getOrgInitials(name: string): string {
+  // Team management methods
+  getInitials(name: string): string {
     return name.split(' ').map(word => word[0]).join('').substring(0, 2).toUpperCase();
+  }
+  
+  teamAvatarColor(team: Team): string {
+    // Generate a consistent color based on team ID
+    const hash = team.id.split('').reduce((acc, char) => {
+      return ((acc << 5) - acc) + char.charCodeAt(0);
+    }, 0);
+
+    // Use the hash to generate a hue value (0-360)
+    const hue = Math.abs(hash % 360);
+
+    // Return HSL color with fixed saturation and lightness
+    return `hsl(${hue}, 70%, 50%)`;
+  }
+  
+  getTeamRoleClass(team: Team): string {
+    const role = this.teamRoles[team.id] || TeamRole.Viewer;
+    switch (role) {
+      case TeamRole.Owner:
+        return 'role-owner';
+      case TeamRole.Contributor:
+        return 'role-contributor';
+      case TeamRole.Viewer:
+        return 'role-viewer';
+      default:
+        return '';
+    }
+  }
+  
+  getTeamRoleName(team: Team): string {
+    const role = this.teamRoles[team.id] || TeamRole.Viewer;
+    switch (role) {
+      case TeamRole.Owner:
+        return 'Owner';
+      case TeamRole.Contributor:
+        return 'Contributor';
+      case TeamRole.Viewer:
+        return 'Viewer';
+      default:
+        return 'Unknown';
+    }
+  }
+  
+  isOwner(team: Team): boolean {
+    return this.teamRoles[team.id] === TeamRole.Owner;
+  }
+  
+  canInvite(team: Team): boolean {
+    return this.teamRoles[team.id] >= TeamRole.Contributor;
+  }
+  
+  openCreateTeam(): void {
+    // To be implemented with a dialog service
+    this.notificationService.info('Opening team creation dialog...');
+  }
+  
+  manageTeam(team: Team): void {
+    // To be implemented with a dialog service
+    this.notificationService.info(`Managing team: ${team.name}`);
+  }
+  
+  inviteToTeam(team: Team): void {
+    // To be implemented with a dialog service
+    this.notificationService.info(`Inviting to team: ${team.name}`);
+  }
+  
+  switchToTeam(team: Team): void {
+    this.teamService.setActiveTeam(team).subscribe(success => {
+      if (success) {
+        this.notificationService.success(`Switched to team: ${team.name}`);
+        this.switchTabView('notes');
+      }
+    });
+  }
+  
+  processInvitation(invitation: any, accept: boolean): void {
+    if (accept) {
+      this.invitationService.acceptInvitation(invitation.id).subscribe({
+        next: () => {
+          this.notificationService.success(`Accepted invitation to ${invitation.team_name}`);
+          // Refresh the invitations and teams
+          this.loadSharedNotes();
+        },
+        error: (error) => {
+          this.notificationService.error(`Error accepting invitation: ${error.message}`);
+        }
+      });
+    } else {
+      this.invitationService.declineInvitation(invitation.id).subscribe({
+        next: () => {
+          this.notificationService.info(`Declined invitation to ${invitation.team_name}`);
+          // Refresh the invitations list
+          this.loadSharedNotes();
+        },
+        error: (error) => {
+          this.notificationService.error(`Error declining invitation: ${error.message}`);
+        }
+      });
+    }
+  }
+  
+  // Helper for working with roles in invitations
+  getInvitationRoleName(role: TeamRole): string {
+    switch (role) {
+      case TeamRole.Owner:
+        return 'Owner';
+      case TeamRole.Contributor:
+        return 'Contributor';
+      case TeamRole.Viewer:
+        return 'Viewer';
+      default:
+        return 'Unknown';
+    }
   }
 
   getRelativeTime(timestamp: number | undefined): string {

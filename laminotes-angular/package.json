@@ -12,7 +12,13 @@
     "electron:build": "ng build --base-href ./ && electron-builder build",
     "electron:start": "wait-on tcp:4200 && electron .",
     "electron:local": "npm run build && electron .",
-    "electron:serve": "concurrently \"ng serve\" \"npm run electron:start\""
+    "electron:serve": "concurrently \"ng serve\" \"npm run electron:start\"",
+    "cap:sync": "npx cap sync",
+    "cap:build": "ng build && npx cap sync",
+    "cap:open:ios": "npx cap open ios",
+    "cap:run:ios": "npx cap run ios",
+    "cap:init:ios": "npx cap add ios",
+    "cap:update": "npx cap update"
   },
   "private": true,
   "dependencies": {
@@ -26,6 +32,7 @@
     "@angular/router": "^19.1.0",
     "@capacitor/core": "^7.0.1",
     "@capacitor/filesystem": "^7.0.0",
+    "@capacitor/ios": "^7.2.0",
     "@types/uuid": "^10.0.0",
     "marked": "^15.0.7",
     "ngx-electron": "^2.2.0",

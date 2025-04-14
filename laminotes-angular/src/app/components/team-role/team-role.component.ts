@@ -1,176 +1,158 @@
-import { Component, Input, OnInit } from '@angular/core';
+import { Component, Input, OnInit, OnChanges, SimpleChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Team, TeamRole } from '../../models/team.model';
+import { Team, TeamRole, TeamMember } from '../../models/team.model';
 import { TeamService } from '../../services/team.service';
 import { NotificationService } from '../../services/notification.service';
+import { ApiService } from '../../services/api.service';
+import { map } from 'rxjs/operators';
+import { forkJoin } from 'rxjs';
+
+// Interface representing an extended team member with display name
+interface TeamMemberDisplay {
+  userId: string;
+  email: string;
+  displayName?: string;
+  role: TeamRole;
+}
 
 @Component({
   selector: 'app-team-role',
   standalone: true,
   imports: [CommonModule],
-  template: `
-    <div class="team-role-card">
-      <div class="role-header">
-        <div class="team-avatar" [style.backgroundColor]="getTeamColor(team)">
-          {{ getTeamInitials(team.name) }}
-        </div>
-        <div>
-          <h3 class="team-name">{{ team.name }}</h3>
-          <div class="role-badge" [ngClass]="roleClass">
-            {{ getRoleName() }}
-          </div>
-        </div>
-      </div>
-
-      <div class="role-actions" *ngIf="canManageTeam()">
-        <button class="action-button" (click)="openManageTeamDialog()">
-          <i class="fas fa-users-cog"></i>
-          Manage Team
-        </button>
-      </div>
-
-      <div class="role-description">
-        <h4>Your Access Level:</h4>
-        <ul class="permission-list">
-          <li *ngIf="role >= TeamRole.Viewer">
-            <i class="fas fa-check"></i> View all team documents
-          </li>
-          <li *ngIf="role >= TeamRole.Contributor">
-            <i class="fas fa-check"></i> Create and edit team documents
-          </li>
-          <li *ngIf="role >= TeamRole.Owner">
-            <i class="fas fa-check"></i> Manage team members and permissions
-          </li>
-        </ul>
-      </div>
-    </div>
-  `,
-  styles: [`
-    .team-role-card {
-      background-color: #1A1C25;
-      border-radius: 8px;
-      padding: 16px;
-      margin-bottom: 16px;
-      border: 1px solid rgba(255, 95, 31, 0.2);
-    }
-
-    .role-header {
-      display: flex;
-      align-items: center;
-      margin-bottom: 16px;
-    }
-
-    .team-avatar {
-      width: 48px;
-      height: 48px;
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: 600;
-      color: white;
-      font-size: 20px;
-      margin-right: 16px;
-    }
-
-    .team-name {
-      margin: 0 0 6px 0;
-      font-size: 18px;
-      color: #F3F3F7;
-    }
-
-    .role-badge {
-      display: inline-block;
-      padding: 4px 10px;
-      border-radius: 12px;
-      font-size: 12px;
-      font-weight: 500;
-    }
-
-    .owner {
-      background-color: rgba(255, 95, 31, 0.2);
-      color: #FF5F1F;
-      border: 1px solid rgba(255, 95, 31, 0.3);
-    }
-
-    .contributor {
-      background-color: rgba(56, 182, 255, 0.2);
-      color: #38B6FF;
-      border: 1px solid rgba(56, 182, 255, 0.3);
-    }
-
-    .viewer {
-      background-color: rgba(0, 229, 160, 0.2);
-      color: #00E5A0;
-      border: 1px solid rgba(0, 229, 160, 0.3);
-    }
-
-    .role-actions {
-      margin-bottom: 16px;
-    }
-
-    .action-button {
-      background-color: #22242E;
-      color: #F3F3F7;
-      border: 1px solid rgba(255, 95, 31, 0.2);
-      border-radius: 4px;
-      padding: 8px 12px;
-      font-size: 14px;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-
-    .action-button:hover {
-      background-color: #FF5F1F;
-      border-color: #FF5F1F;
-    }
-
-    .action-button i {
-      margin-right: 8px;
-    }
-
-    .role-description h4 {
-      margin: 0 0 8px 0;
-      font-size: 14px;
-      color: #A0A3B1;
-    }
-
-    .permission-list {
-      list-style: none;
-      padding: 0;
-      margin: 0;
-    }
-
-    .permission-list li {
-      display: flex;
-      align-items: center;
-      margin-bottom: 6px;
-      color: #F3F3F7;
-      font-size: 14px;
-    }
-
-    .permission-list li i {
-      color: #00E5A0;
-      margin-right: 8px;
-      width: 16px;
-    }
-  `]
+  templateUrl: './team-role.component.html',
+  styleUrls: ['./team-role.component.css']
 })
-export class TeamRoleComponent implements OnInit {
+export class TeamRoleComponent implements OnInit, OnChanges {
   @Input() team!: Team;
   @Input() role: TeamRole = TeamRole.Viewer;
 
   TeamRole = TeamRole; // Expose enum to template
-
+  teamMembers: TeamMemberDisplay[] = [];
+  isLoadingMembers: boolean = false;
+  currentUserId: string | null = null;
   roleClass: string = '';
 
   constructor(
     private teamService: TeamService,
-    private notificationService: NotificationService
+    private notificationService: NotificationService,
+    private apiService: ApiService
   ) {}
 
   ngOnInit(): void {
     this.updateRoleClass();
+    this.getCurrentUserId();
+    
+    if (this.team) {
+      this.loadTeamMembers();
+    }
+  }
+  
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['team'] && !changes['team'].firstChange) {
+      this.loadTeamMembers();
+    }
+    
+    if (changes['role']) {
+      this.updateRoleClass();
+    }
+  }
+  
+  private getCurrentUserId(): void {
+    this.apiService.getCurrentUser().subscribe({
+      next: (user) => {
+        this.currentUserId = user.user_id;
+      },
+      error: (error) => {
+        console.error('Error getting current user ID:', error);
+      }
+    });
+  }
+  
+  private loadTeamMembers(): void {
+    if (!this.team) return;
+    
+    this.isLoadingMembers = true;
+    
+    this.apiService.getTeamMembers(this.team.id).subscribe({
+      next: (members) => {
+        // Add owner to list if not already included
+        const hasOwner = members.some(m => m.user_id === this.team.owner_id);
+        
+        if (!hasOwner) {
+          members.push({
+            user_id: this.team.owner_id,
+            team_id: this.team.id,
+            role: TeamRole.Owner
+          });
+        }
+        
+        // Convert to display format with user info
+        this.fetchMemberDetails(members);
+      },
+      error: (error) => {
+        console.error('Error loading team members:', error);
+        this.notificationService.error('Failed to load team members');
+        this.isLoadingMembers = false;
+        
+        // Show mock data for demonstration if API fails
+        this.teamMembers = this.getMockTeamMembers();
+      }
+    });
+  }
+  
+  private fetchMemberDetails(members: TeamMember[]): void {
+    // For each member, fetch user details like display name
+    const memberPromises = members.map(member => 
+      this.apiService.getUserById(member.user_id).pipe(
+        map(user => ({
+          userId: member.user_id,
+          email: user.email,
+          displayName: user.display_name, 
+          role: member.role
+        }))
+      )
+    );
+    
+    forkJoin(memberPromises).subscribe({
+      next: (memberDetails) => {
+        this.teamMembers = memberDetails;
+        this.isLoadingMembers = false;
+      },
+      error: (error) => {
+        console.error('Error fetching member details:', error);
+        this.isLoadingMembers = false;
+        
+        // Fallback to basic info without display names
+        this.teamMembers = members.map(m => ({
+          userId: m.user_id,
+          email: 'user@example.com', // Placeholder
+          role: m.role
+        }));
+      }
+    });
+  }
+  
+  private getMockTeamMembers(): TeamMemberDisplay[] {
+    return [
+      {
+        userId: this.team.owner_id,
+        email: 'owner@example.com',
+        displayName: 'Team Owner',
+        role: TeamRole.Owner
+      },
+      {
+        userId: 'member1',
+        email: 'contributor@example.com',
+        displayName: 'Team Contributor',
+        role: TeamRole.Contributor
+      },
+      {
+        userId: 'member2',
+        email: 'viewer@example.com',
+        displayName: 'Team Viewer',
+        role: TeamRole.Viewer
+      }
+    ];
   }
 
   private updateRoleClass(): void {
@@ -187,6 +169,33 @@ export class TeamRoleComponent implements OnInit {
     }
   }
 
+  // Get display name for a team member
+  getInitials(name: string): string {
+    return name
+      .split(' ')
+      .map(word => word[0])
+      .join('')
+      .toUpperCase()
+      .substring(0, 2);
+  }
+  
+  // Team color generator based on team ID
+  getTeamColor(team: Team): string {
+    if (!team || !team.id) return 'hsl(0, 70%, 50%)';
+    
+    // Generate a consistent color based on team ID
+    const hash = team.id.split('').reduce((acc, char) => {
+      return ((acc << 5) - acc) + char.charCodeAt(0);
+    }, 0);
+
+    // Use the hash to generate a hue value (0-360)
+    const hue = Math.abs(hash % 360);
+
+    // Return HSL color with fixed saturation and lightness
+    return `hsl(${hue}, 70%, 50%)`;
+  }
+  
+  // Role helper methods
   getRoleName(): string {
     switch (this.role) {
       case TeamRole.Owner:
@@ -199,35 +208,123 @@ export class TeamRoleComponent implements OnInit {
         return 'Unknown';
     }
   }
-
-  getTeamInitials(name: string): string {
-    return name
-      .split(' ')
-      .map(word => word[0])
-      .join('')
-      .toUpperCase()
-      .substring(0, 2);
+  
+  getRoleNameFor(role: TeamRole): string {
+    switch (role) {
+      case TeamRole.Owner:
+        return 'Owner';
+      case TeamRole.Contributor:
+        return 'Contributor';
+      case TeamRole.Viewer:
+        return 'Viewer';
+      default:
+        return 'Unknown';
+    }
   }
-
-  getTeamColor(team: Team): string {
-    // Generate a consistent color based on team ID
-    const hash = team.id.split('').reduce((acc, char) => {
-      return ((acc << 5) - acc) + char.charCodeAt(0);
-    }, 0);
-
-    // Use the hash to generate a hue value (0-360)
-    const hue = Math.abs(hash % 360);
-
-    // Return HSL color with fixed saturation and lightness
-    return `hsl(${hue}, 70%, 50%)`;
+  
+  getRoleClassFor(role: TeamRole): string {
+    switch (role) {
+      case TeamRole.Owner:
+        return 'owner';
+      case TeamRole.Contributor:
+        return 'contributor';
+      case TeamRole.Viewer:
+        return 'viewer';
+      default:
+        return '';
+    }
   }
 
   canManageTeam(): boolean {
     return this.role === TeamRole.Owner;
   }
-
-  openManageTeamDialog(): void {
-    // This will be implemented later
-    this.notificationService.info('Team management coming soon');
+  
+  // Team member management
+  changeRole(member: TeamMemberDisplay): void {
+    if (!this.canManageTeam()) {
+      this.notificationService.error('Only team owners can change member roles');
+      return;
+    }
+    
+    // For a real implementation, this would open a dialog to select a new role
+    const newRole = this.getNextRole(member.role);
+    
+    this.apiService.updateTeamMemberRole(this.team.id, member.userId, newRole).subscribe({
+      next: () => {
+        // Update the local member list
+        const updatedMember = this.teamMembers.find(m => m.userId === member.userId);
+        if (updatedMember) {
+          updatedMember.role = newRole;
+        }
+        
+        this.notificationService.success(`Changed role for ${member.displayName || member.email} to ${this.getRoleNameFor(newRole)}`);
+      },
+      error: (error) => {
+        console.error('Error updating member role:', error);
+        this.notificationService.error('Failed to update team member role');
+      }
+    });
+  }
+  
+  // Get the next role in the cycle Viewer -> Contributor -> Owner -> Viewer
+  private getNextRole(currentRole: TeamRole): TeamRole {
+    switch (currentRole) {
+      case TeamRole.Viewer:
+        return TeamRole.Contributor;
+      case TeamRole.Contributor:
+        return TeamRole.Owner;
+      case TeamRole.Owner:
+        return TeamRole.Viewer;
+      default:
+        return TeamRole.Viewer;
+    }
+  }
+  
+  removeMember(member: TeamMemberDisplay): void {
+    if (!this.canManageTeam()) {
+      this.notificationService.error('Only team owners can remove members');
+      return;
+    }
+    
+    if (member.userId === this.team.owner_id) {
+      this.notificationService.error('Cannot remove the team owner');
+      return;
+    }
+    
+    if (confirm(`Are you sure you want to remove ${member.displayName || member.email} from the team?`)) {
+      this.apiService.removeTeamMember(this.team.id, member.userId).subscribe({
+        next: () => {
+          // Remove from the local team members list
+          this.teamMembers = this.teamMembers.filter(m => m.userId !== member.userId);
+          this.notificationService.success(`Removed ${member.displayName || member.email} from the team`);
+        },
+        error: (error) => {
+          console.error('Error removing team member:', error);
+          this.notificationService.error('Failed to remove team member');
+        }
+      });
+    }
+  }
+  
+  deleteTeam(): void {
+    if (!this.canManageTeam()) {
+      this.notificationService.error('Only team owners can delete the team');
+      return;
+    }
+    
+    if (confirm(`Are you sure you want to delete the team "${this.team.name}"? This action cannot be undone.`)) {
+      this.apiService.deleteTeam(this.team.id).subscribe({
+        next: () => {
+          this.notificationService.success(`Team "${this.team.name}" has been deleted`);
+          
+          // Switch to personal context
+          this.teamService.setActiveTeam(null).subscribe();
+        },
+        error: (error) => {
+          console.error('Error deleting team:', error);
+          this.notificationService.error(`Failed to delete team: ${error.message}`);
+        }
+      });
+    }
   }
 }

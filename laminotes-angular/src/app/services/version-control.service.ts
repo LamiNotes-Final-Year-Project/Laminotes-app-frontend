@@ -38,7 +38,7 @@ export interface ResolveConflictRequest {
   providedIn: 'root'
 })
 export class VersionControlService {
-  private readonly API_URL = 'http://127.0.0.1:9090';
+  private readonly API_URL = 'http://35.246.27.92:9090';
 
   constructor(private http: HttpClient) { }
 

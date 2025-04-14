@@ -1,1 +1,81 @@
-<p>team-invitations works!</p>
+<div class="invitations-panel">
+  <div class="panel-section">
+    <h3 class="section-title">
+      <i class="fas fa-paper-plane"></i> Send Invitation
+    </h3>
+
+    <div class="invite-form">
+      <div class="form-group">
+        <label for="inviteEmail">Email Address</label>
+        <input
+          type="email"
+          id="inviteEmail"
+          [(ngModel)]="newInvitation.email"
+          placeholder="colleague@example.com"
+          class="form-input">
+      </div>
+
+      <div class="form-group">
+        <label for="inviteRole">Role</label>
+        <select
+          id="inviteRole"
+          [(ngModel)]="newInvitation.role"
+          class="form-select">
+          <option [ngValue]="TeamRole.Viewer">Viewer (Read only)</option>
+          <option [ngValue]="TeamRole.Contributor">Contributor (Can edit)</option>
+          <option [ngValue]="TeamRole.Owner" *ngIf="isOwner">Owner (Full control)</option>
+        </select>
+      </div>
+
+      <button
+        class="invite-button"
+        [disabled]="!isValidEmail(newInvitation.email) || isInviting"
+        (click)="sendInvitation()">
+        <i class="fas fa-user-plus" *ngIf="!isInviting"></i>
+        <i class="fas fa-spinner fa-spin" *ngIf="isInviting"></i>
+        {{ isInviting ? 'Sending...' : 'Send Invitation' }}
+      </button>
+    </div>
+  </div>
+
+  <div class="panel-section">
+    <h3 class="section-title">
+      <i class="fas fa-clock"></i> Pending Invitations
+    </h3>
+
+    <div class="loading-indicator" *ngIf="isLoading">
+      <i class="fas fa-spinner fa-spin"></i> Loading invitations...
+    </div>
+
+    <div class="empty-state" *ngIf="!isLoading && pendingInvitations.length === 0">
+      <i class="fas fa-inbox"></i>
+      <p>No pending invitations</p>
+    </div>
+
+    <div class="invitation-list">
+      <div class="invitation-item" *ngFor="let invitation of pendingInvitations">
+        <div class="invitation-content">
+          <div class="invitation-icon">
+            <i class="fas fa-envelope"></i>
+          </div>
+          <div class="invitation-details">
+            <div class="invitation-email">{{ invitation.invited_email }}</div>
+            <div class="invitation-meta">
+              <span class="invitation-role" [ngClass]="getRoleClass(invitation.role)">
+                {{ getRoleName(invitation.role) }}
+              </span>
+              <span class="invitation-date">
+                {{ getFormattedDate(invitation.created_at) }}
+              </span>
+            </div>
+          </div>
+        </div>
+        <div class="invitation-actions">
+          <button class="action-button cancel" (click)="cancelInvitation(invitation)">
+            <i class="fas fa-times"></i> Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

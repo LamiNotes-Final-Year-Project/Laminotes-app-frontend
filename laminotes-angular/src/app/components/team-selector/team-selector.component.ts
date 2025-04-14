@@ -386,12 +386,59 @@ export class TeamSelectorComponent implements OnInit {
         return;
       }
       
-      // If directory is already set, just switch to the team
-      console.log(`Team "${team.name}" already has directory: ${existingDir}`);
-      this.notificationService.info(`Using existing directory for team "${team.name}": ${existingDir}`);
+      // If directory is already set, validate it before switching
+      console.log(`Team "${team.name}" has directory: ${existingDir}, validating...`);
+      
+      this.electronService.checkFileExists(existingDir).subscribe(exists => {
+        if (!exists) {
+          console.warn(`Team directory ${existingDir} does not exist or is not accessible`);
+          this.notificationService.warning(`The directory for team "${team.name}" cannot be found. Please select a new directory.`);
+          
+          // Prompt for a new directory
+          this.electronService.selectDirectory().subscribe({
+            next: result => {
+              if (result.success && result.dirPath) {
+                console.log(`Selected new directory: ${result.dirPath}`);
+                
+                // Update the team directory
+                this.teamService.setTeamDirectory(team, result.dirPath).subscribe(() => {
+                  console.log(`Team directory updated to: ${result.dirPath}`);
+                  
+                  // After setting directory, activate the team
+                  this.teamService.setActiveTeam(team).subscribe(success => {
+                    if (success) {
+                      this.notificationService.success(`Switched to team "${team.name}" with new directory: ${result.dirPath}`);
+                      this.cdr.detectChanges();
+                    }
+                  });
+                });
+              } else {
+                this.notificationService.error('You need to select a valid directory for team files');
+              }
+            },
+            error: err => {
+              console.error('Error selecting directory:', err);
+              this.notificationService.error('Failed to select directory');
+            }
+          });
+          return;
+        }
+        
+        // Directory exists, proceed with team switching
+        console.log(`Team directory validated: ${existingDir}`);
+        this.notificationService.info(`Using directory for team "${team.name}": ${existingDir}`);
+        
+        // Continue with normal team switching
+        this.teamService.setActiveTeam(team).subscribe(success => {
+          if (success) {
+            this.cdr.detectChanges();
+          }
+        });
+      });
+      return;
     }
     
-    // Continue with normal team switching
+    // For non-Electron platforms, just switch the team
     this.teamService.setActiveTeam(team).subscribe(success => {
       if (success) {
         this.cdr.detectChanges();

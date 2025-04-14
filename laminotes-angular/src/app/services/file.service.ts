@@ -2,8 +2,9 @@
  * File management service.
  *
  * Handles all file operations including creating, reading, updating, and deleting files.
- * Provides cross-platform functionality supporting both browser localStorage and Electron
- * filesystem access, with team-specific directory handling for collaborative workflows.
+ * Provides cross-platform functionality supporting browser localStorage, Electron desktop,
+ * and Capacitor mobile (iOS/iPadOS) filesystem access, with team-specific directory 
+ * handling for collaborative workflows.
  */
 import { Injectable } from '@angular/core';
 import { Observable, of, from, throwError, forkJoin, lastValueFrom } from 'rxjs';
@@ -13,8 +14,10 @@ import { v4 as uuidv4 } from 'uuid';
 import { ApiService } from './api.service';
 import { MetadataService } from './metadata.service';
 import { TeamService } from './team.service';
-import { TeamRole } from '../models/team.model';
+import { Team, TeamRole } from '../models/team.model';
 import { ElectronService } from '../services/electron.service';
+import { CapacitorService } from '../services/capacitor.service';
+import { NotificationService } from './notification.service';
 
 /**
  * Interface representing file information.
@@ -43,7 +46,7 @@ export interface FileInfo {
 /**
  * Service responsible for file system operations.
  * Provides methods for creating, reading, updating, and deleting files,
- * with support for both browser and desktop environments.
+ * with support for browser, desktop, and mobile environments.
  */
 @Injectable({
   providedIn: 'root'
@@ -63,6 +66,9 @@ export class FileService {
 
   /** Prefix for file content keys in localStorage */
   private readonly FILE_CONTENT_PREFIX = 'file_';
+  
+  /** Flag indicating we're running in a mobile environment */
+  private isMobileEnvironment: boolean = false;
 
   /**
    * Gets a file path from the Electron save dialog.
@@ -171,13 +177,27 @@ export class FileService {
    * @param teamService - Service for team-related operations
    * @param electronService - Service for Electron-specific functionality
    */
+  /**
+   * Creates an instance of FileService.
+   *
+   * @param apiService - Service for API communication
+   * @param metadataService - Service for file metadata management
+   * @param teamService - Service for team-related operations
+   * @param electronService - Service for Electron-specific functionality
+   * @param capacitorService - Service for Capacitor (iOS/iPadOS) functionality
+   */
   constructor(
     private apiService: ApiService,
     private metadataService: MetadataService,
     private teamService: TeamService,
-    private electronService: ElectronService
+    private electronService: ElectronService,
+    private capacitorService: CapacitorService,
+    private notificationService: NotificationService
   ) {
     this.loadFilesFromLocalStorage();
+
+    // Detect the environment we're running in
+    this.isMobileEnvironment = this.capacitorService.isCapacitor();
 
     // For path operations in Electron environment, use Node.js path module
     if (this.electronService.isElectron()) {
@@ -191,14 +211,23 @@ export class FileService {
         console.error('Error loading Node.js path module:', e);
       }
     }
+    
+    if (this.isMobileEnvironment) {
+      console.log(`Running in mobile environment: ${this.capacitorService.getPlatformName()}`);
+      // For iOS/iPadOS, set default directory to the app-specific location
+      if (this.capacitorService.isIOS()) {
+        this.currentDirectory = 'Laminotes';
+      }
+    }
   }
 
   /**
    * Loads file list from localStorage.
-   * Used for browser mode or when no directory is set in Electron.
+   * Used for browser mode or when no directory is set in Electron/Capacitor.
    */
   private loadFilesFromLocalStorage(): void {
-    if (this.electronService.isElectron() && this.currentDirectory) {
+    // Skip localStorage loading when using native filesystem
+    if ((this.electronService.isElectron() || this.isMobileEnvironment) && this.currentDirectory) {
       console.log(`Using directory-based file list for ${this.currentDirectory}, skipping localStorage load`);
       return;
     }
@@ -232,12 +261,58 @@ export class FileService {
   /**
    * Refreshes the list of files in the current directory.
    *
-   * Handles team directory synchronization, directory reading in Electron,
+   * Handles team directory synchronization, directory reading in Electron and Capacitor,
    * and fallback to localStorage in browser mode.
    */
+  /**
+   * Handles a team directory failure scenario by prompting for a new directory.
+   * This helps recover from cases where a team directory becomes invalid or inaccessible.
+   * 
+   * @param team The team with the problematic directory
+   */
+  private handleDirectoryFailure(team: Team): void {
+    console.warn(`🚨 Team directory validation failed for team: ${team.name}`);
+    
+    this.notificationService.warning(
+      `The directory for team "${team.name}" is not accessible. Please select a new directory.`
+    );
+    
+    // Prompt for directory selection
+    this.electronService.selectDirectory().subscribe({
+      next: result => {
+        if (result.success && result.dirPath) {
+          console.log(`🔄 Selected new directory for team ${team.name}: ${result.dirPath}`);
+          
+          // Update team directory
+          this.teamService.setTeamDirectory(team, result.dirPath).subscribe(success => {
+            if (success) {
+              this.notificationService.success(`Updated team directory for "${team.name}"`);
+              
+              // Update current directory and refresh files
+              this.currentDirectory = result.dirPath;
+              this.filesInDirectory = result.files || [];
+              this.saveFilesToLocalStorage();
+            }
+          });
+        } else {
+          console.warn('❌ Directory selection cancelled or failed');
+          this.notificationService.error(
+            `Please select a valid directory for team "${team.name}" to access team files.`
+          );
+        }
+      },
+      error: err => {
+        console.error('Error selecting new team directory:', err);
+        this.notificationService.error('Failed to select a new team directory');
+      }
+    });
+  }
+  
   refreshFileList(): void {
     // Check if we need to update currentDirectory based on active team
     const activeTeam = this.teamService.activeTeam;
+    
+    // Handle Electron-specific team directory logic
     if (activeTeam && this.electronService.isElectron()) {
       const teamDirectory = this.teamService.getTeamDirectory(activeTeam.id);
 
@@ -249,22 +324,63 @@ export class FileService {
         // Make sure team directory exists
         this.electronService.checkFileExists(teamDirectory).subscribe(exists => {
           if (!exists) {
-            console.log(`Team directory does not exist, creating: ${teamDirectory}`);
+            console.log(`Team directory ${teamDirectory} does not exist, creating it`);
             this.electronService.createDirectory(teamDirectory).subscribe(result => {
               if (result.success) {
                 console.log(`Successfully created team directory: ${teamDirectory}`);
+                // Re-read directory after creation to refresh file list
+                this.electronService.selectDirectory(teamDirectory).subscribe(dirResult => {
+                  if (dirResult && dirResult.success) {
+                    console.log(`Refreshed file list for newly created directory: ${teamDirectory}`);
+                    this.filesInDirectory = dirResult.files || [];
+                    this.saveFilesToLocalStorage();
+                  }
+                });
               } else {
                 console.warn(`Failed to create team directory: ${result.message}`);
+                // Handle failure by displaying a notification
+                this.handleDirectoryFailure(activeTeam);
+              }
+            });
+          } else {
+            // Directory exists, but ensure we have the latest file list
+            this.electronService.selectDirectory(teamDirectory).subscribe(dirResult => {
+              if (dirResult && dirResult.success) {
+                console.log(`Refreshed existing team directory: ${teamDirectory}`);
+                this.filesInDirectory = dirResult.files || [];
+                this.saveFilesToLocalStorage();
+              } else {
+                console.warn(`Failed to read team directory: ${teamDirectory}`);
+                this.handleDirectoryFailure(activeTeam);
               }
             });
           }
         });
       }
     }
+    
+    // Handle Capacitor-specific team directory logic for iOS/iPadOS
+    if (activeTeam && this.isMobileEnvironment) {
+      const teamDirectory = this.teamService.getTeamDirectory(activeTeam.id);
+      
+      // For mobile, use a simplified team directory structure
+      const mobileTeamDir = teamDirectory || `Teams/${activeTeam.name}`;
+      
+      if (this.currentDirectory !== mobileTeamDir) {
+        console.log(`Setting mobile directory to team directory: ${mobileTeamDir}`);
+        this.currentDirectory = mobileTeamDir;
+        
+        // Make sure directory exists in iOS filesystem
+        this.capacitorService.createDirectory(mobileTeamDir).subscribe(
+          result => console.log('Created team directory for mobile:', result),
+          error => console.error('Failed to create team directory for mobile:', error)
+        );
+      }
+    }
 
     // If in Electron with a selected directory, scan that directory
     if (this.electronService.isElectron() && this.currentDirectory) {
-      console.log(`Refreshing file list for directory: ${this.currentDirectory}`);
+      console.log(`Refreshing file list for Electron directory: ${this.currentDirectory}`);
 
       // Use the electron API to read directory contents
       this.electronService.checkFileExists(this.currentDirectory).pipe(
@@ -336,6 +452,44 @@ export class FileService {
 
       return;
     }
+    
+    // If on iOS/iPadOS with Capacitor
+    if (this.isMobileEnvironment && this.currentDirectory) {
+      console.log(`Refreshing file list for iOS directory: ${this.currentDirectory}`);
+      
+      // Use Capacitor API to read directory contents
+      this.capacitorService.listDirectory(this.currentDirectory).subscribe({
+        next: (result) => {
+          if (result && result.success && result.files) {
+            console.log(`Found ${result.files.length} files in iOS directory ${this.currentDirectory}`);
+            
+            // Add team_id to files if in team context
+            if (activeTeam) {
+              result.files.forEach((file: FileInfo) => {
+                file.team_id = activeTeam.id;
+              });
+            }
+            
+            // Set the files list
+            this.filesInDirectory = result.files;
+            
+            // Update localStorage as backup
+            this.saveFilesToLocalStorage();
+          } else {
+            console.log('No valid result from iOS directory read, showing empty list');
+            this.filesInDirectory = [];
+            this.saveFilesToLocalStorage();
+          }
+        },
+        error: (error) => {
+          console.error('Error refreshing iOS directory file list:', error);
+          // In case of error, fall back to localStorage
+          this.loadFilesFromLocalStorage();
+        }
+      });
+      
+      return;
+    }
 
     // If no directory is set, load from localStorage
     this.loadFilesFromLocalStorage();
@@ -395,7 +549,8 @@ export class FileService {
 
   /**
    * Saves file content to disk or localStorage.
-   * Handles both Electron and browser environments with appropriate storage mechanisms.
+   * Handles Electron desktop, Capacitor mobile, and browser environments 
+   * with appropriate storage mechanisms.
    *
    * @param content - The file content to save
    * @param newFilePath - Optional path for a new file
@@ -403,26 +558,23 @@ export class FileService {
    * @returns Observable completing when the save operation is finished
    */
   saveFile(content: string, newFilePath?: string, forceSaveAs: boolean = false): Observable<void> {
-    // Do an explicit check if Electron is available and log the result
-    const isElectronAvailable = this.electronService.isElectron();
-    console.log(`Is Electron available: ${isElectronAvailable}`);
-
-    // Check if running in Electron first
-    if (isElectronAvailable) {
+    const activeTeam = this.teamService.activeTeam;
+    
+    // ELECTRON ENVIRONMENT HANDLING
+    if (this.electronService.isElectron()) {
       console.log('Running in Electron, using native save dialog');
 
       // Get current file path if available
       let filePath = this.currentFile ? this.currentFile.path : newFilePath;
       // Default to using saveAs for new files
       let saveAs = forceSaveAs;
-      const activeTeam = this.teamService.activeTeam;
 
       // Handle team context specially
-      if (activeTeam && this.electronService.isElectron()) {
-        console.log(`Saving file in team context: ${activeTeam.name}`);
+      if (activeTeam) {
+        console.log(`Saving file in Electron team context: ${activeTeam.name}`);
 
         // Check if team has a directory
-        let teamDirectory = activeTeam ? this.teamService.getTeamDirectory(activeTeam.id) : null;
+        let teamDirectory = this.teamService.getTeamDirectory(activeTeam.id);
 
         // If no team directory is set, prompt user to select one
         if (!teamDirectory) {
@@ -547,7 +699,6 @@ export class FileService {
         } else {
 
           // Set default directory to team directory if available
-          const activeTeam = this.teamService.activeTeam;
           const teamDirectory = activeTeam ? this.teamService.getTeamDirectory(activeTeam.id) : null;
           const defaultPath = teamDirectory || null;
 
@@ -591,7 +742,105 @@ export class FileService {
           return throwError(() => error);
         })
       );
-    } else {
+    } 
+    // CAPACITOR (iOS/IPAD) ENVIRONMENT HANDLING
+    else if (this.isMobileEnvironment) {
+      console.log('Running in Capacitor (iOS/iPadOS), using mobile file system API');
+      
+      // Get file path or generate a new one
+      let filePath = this.currentFile ? this.currentFile.path : newFilePath;
+      const fileName = this.currentFile?.name || 
+        (newFilePath ? newFilePath.split('/').pop() : '') || 
+        'untitled.md';
+      
+      // Handle team context for iOS
+      if (activeTeam) {
+        console.log(`Saving file in iOS team context: ${activeTeam.name}`);
+        
+        // Check for team directory or use default structure
+        let teamDirectory = this.teamService.getTeamDirectory(activeTeam.id);
+        if (!teamDirectory) {
+          // Create iOS-friendly team directory structure
+          teamDirectory = `Teams/${activeTeam.name}`;
+          console.log(`Creating iOS team directory: ${teamDirectory}`);
+          
+          // Update team settings with this directory
+          this.teamService.setTeamDirectory(activeTeam, teamDirectory).subscribe();
+        }
+        
+        // Set current directory and construct path
+        this.currentDirectory = teamDirectory;
+        filePath = `${teamDirectory}/${fileName}`;
+        console.log(`Using iOS team file path: ${filePath}`);
+      } else if (!filePath || !filePath.includes('/')) {
+        // For non-team files without a path, create a standard location
+        filePath = `Laminotes/${fileName}`;
+        console.log(`Using default iOS path: ${filePath}`);
+      }
+      
+      // Use Capacitor to save the file
+      return this.capacitorService.saveFile(content, filePath, forceSaveAs).pipe(
+        tap(result => {
+          console.log('Capacitor save result:', result);
+          
+          // If path changed, update it
+          if (result.filePath && result.filePath !== filePath) {
+            filePath = result.filePath;
+          }
+          
+          // Store a backup in localStorage
+          localStorage.setItem(`${this.FILE_CONTENT_PREFIX}${filePath}`, content);
+          
+          // Update or create the current file record
+          if (!this.currentFile) {
+            // Make sure we have a valid filePath
+            if (filePath) {
+              this.currentFile = {
+                path: filePath,
+                name: filePath.split('/').pop() || fileName,
+                team_id: activeTeam?.id,
+                lastModified: Date.now()
+              };
+            } else {
+              // Create with default path if filePath is undefined
+              const defaultPath = `Laminotes/${fileName}`;
+              this.currentFile = {
+                path: defaultPath,
+                name: fileName,
+                team_id: activeTeam?.id,
+                lastModified: Date.now()
+              };
+            }
+          } else if (filePath) {
+            // Only update if filePath is valid
+            this.currentFile.path = filePath;
+            this.currentFile.lastModified = Date.now();
+            this.currentFile.team_id = activeTeam?.id;
+          }
+          
+          // Update the file list (only if currentFile is set)
+          if (this.currentFile) {
+            const existingIndex = this.filesInDirectory.findIndex(f => 
+              f.path === this.currentFile?.path);
+            if (existingIndex !== -1) {
+              this.filesInDirectory[existingIndex] = this.currentFile;
+            } else {
+              this.filesInDirectory.push(this.currentFile);
+            }
+          }
+          
+          this.saveFilesToLocalStorage();
+        }),
+        catchError(error => {
+          console.error('Error in Capacitor save:', error);
+          return throwError(() => error);
+        }),
+        map(() => undefined) // Normalize return type to void
+      );
+    }
+    // BROWSER ENVIRONMENT HANDLING (fallback)
+    else {
+      console.log('Running in browser, using localStorage for file storage');
       if (this.currentFile) {
         localStorage.setItem(`${this.FILE_CONTENT_PREFIX}${this.currentFile.path}`, content);
         this.currentFile.lastModified = Date.now(); // Update timestamp
@@ -653,9 +902,16 @@ export class FileService {
     }
   }
 
+  /**
+   * Prompts user to select a directory for file storage.
+   * Handles different approaches for Electron desktop and Capacitor mobile platforms.
+   * 
+   * @returns Observable containing the selected directory path or null if cancelled/unsupported
+   */
   selectDirectory(): Observable<string | null> {
     console.log('Selecting directory');
 
+    // ELECTRON DESKTOP ENVIRONMENT
     if (this.electronService.isElectron()) {
       return this.electronService.selectDirectory().pipe(
         map(result => {
@@ -688,7 +944,86 @@ export class FileService {
           return of(null);
         })
       );
-    } else {
+    } 
+    // CAPACITOR iOS/iPadOS ENVIRONMENT
+    else if (this.isMobileEnvironment) {
+      console.log('Selecting directory in Capacitor iOS/iPadOS');
+      
+      // iOS doesn't have a proper directory picker, so we'll use a simplified approach
+      // We'll either use an existing team directory or create a default one
+      const activeTeam = this.teamService.activeTeam;
+      
+      if (activeTeam) {
+        // For team context, use/create team directory
+        const teamDir = this.teamService.getTeamDirectory(activeTeam.id) || `Teams/${activeTeam.name}`;
+        
+        return this.capacitorService.createDirectory(teamDir).pipe(
+          switchMap(() => this.capacitorService.listDirectory(teamDir)),
+          map(result => {
+            if (result.success) {
+              console.log(`Using team directory for iOS: ${teamDir}`);
+              this.currentDirectory = teamDir;
+              
+              // Update files list
+              this.filesInDirectory = result.files || [];
+              if (this.filesInDirectory.length > 0) {
+                console.log(`Found ${this.filesInDirectory.length} files in iOS directory`);
+                
+                // Tag files with team ID
+                this.filesInDirectory.forEach(file => {
+                  file.team_id = activeTeam.id;
+                });
+              } else {
+                console.log('No files found in iOS directory');
+              }
+              
+              this.saveFilesToLocalStorage();
+              return teamDir;
+            } else {
+              console.error('Error accessing iOS directory:', result.message);
+              return null;
+            }
+          }),
+          catchError(error => {
+            console.error('Error with iOS directory operations:', error);
+            return of(null);
+          })
+        );
+      } else {
+        // For personal context, use default directory
+        const defaultDir = 'Laminotes';
+        
+        return this.capacitorService.createDirectory(defaultDir).pipe(
+          switchMap(() => this.capacitorService.listDirectory(defaultDir)),
+          map(result => {
+            if (result.success) {
+              console.log(`Using default iOS directory: ${defaultDir}`);
+              this.currentDirectory = defaultDir;
+              
+              // Update files list
+              this.filesInDirectory = result.files || [];
+              if (this.filesInDirectory.length > 0) {
+                console.log(`Found ${this.filesInDirectory.length} files in iOS directory`);
+              } else {
+                console.log('No files found in iOS directory');
+              }
+              
+              this.saveFilesToLocalStorage();
+              return defaultDir;
+            } else {
+              console.error('Error accessing iOS directory:', result.message);
+              return null;
+            }
+          }),
+          catchError(error => {
+            console.error('Error with iOS directory operations:', error);
+            return of(null);
+          })
+        );
+      }
+    } 
+    // BROWSER ENVIRONMENT (Fallback)
+    else {
       console.log('Directory selection not supported in browser mode');
       return of(null);
     }
@@ -753,7 +1088,8 @@ export class FileService {
   }
   /**
    * Creates a new file with optional initial content.
-   * Handles team directory placement and both Electron and browser environments.
+   * Handles team directory placement across Electron, Capacitor iOS/iPadOS,
+   * and browser environments.
    *
    * @param fileName - Name of the file to create (extension added if missing)
    * @param initialContent - Optional initial content for the file
@@ -764,9 +1100,13 @@ export class FileService {
     if (!fileName.includes('.')) {
       fileName = `${fileName}.md`;
     }
+    
+    const activeTeam = this.teamService.activeTeam;
+    const teamId = activeTeam?.id;
+    
+    // ELECTRON ENVIRONMENT
     if (this.electronService.isElectron()) {
       console.log('Creating new file in Electron mode');
-      const activeTeam = this.teamService.activeTeam;
       const teamDirectory = activeTeam ? this.teamService.getTeamDirectory(activeTeam.id) : null;
 
       // Create a file path using the appropriate directory
@@ -840,44 +1180,101 @@ export class FileService {
 
       return of(undefined);
     }
+    // CAPACITOR iOS/iPadOS ENVIRONMENT
+    else if (this.isMobileEnvironment) {
+      console.log('Creating new file in Capacitor mode (iOS/iPadOS)');
+      
+      // Determine the appropriate directory for the file
+      let dirPath = 'Laminotes';
+      let filePath = '';
+      
+      // If in team context, use team directory
+      if (activeTeam) {
+        // Get team directory or create a default one
+        const teamDirectory = this.teamService.getTeamDirectory(activeTeam.id) || `Teams/${activeTeam.name}`;
+        
+        // Update team directory if needed
+        if (!this.teamService.getTeamDirectory(activeTeam.id)) {
+          this.teamService.setTeamDirectory(activeTeam, teamDirectory).subscribe();
+        }
+        
+        dirPath = teamDirectory;
+        this.currentDirectory = dirPath;
+      } else if (this.currentDirectory) {
+        dirPath = this.currentDirectory;
+      }
+      
+      // Build full file path
+      filePath = `${dirPath}/${fileName}`;
+      console.log(`Creating new file in Capacitor at path: ${filePath}`);
+      
+      // Create the directory if it doesn't exist
+      return this.capacitorService.createDirectory(dirPath).pipe(
+        // Then save the file with the initial content
+        switchMap(() => this.capacitorService.saveFile(initialContent, filePath)),
+        map(result => {
+          console.log('New file creation result:', result);
+          
+          // Create and store the file object
+          const newFile: FileInfo = {
+            path: filePath,
+            name: fileName,
+            team_id: teamId,
+            lastModified: Date.now()
+          };
+          
+          // Add to files list and set as current
+          this.filesInDirectory.push(newFile);
+          this.currentFile = newFile;
+          this.saveFilesToLocalStorage();
+          
+          return undefined;
+        }),
+        catchError(error => {
+          console.error('Error creating new file in Capacitor:', error);
+          return throwError(() => error);
+        })
+      );
+    }
+    // BROWSER ENVIRONMENT (Fallback)
+    else {
+      console.log('Creating new file in browser mode');
+      // Browser mode - create virtual file with UUID-based path
+      const id = uuidv4();
+      const newFilePath = `${id}/${fileName}`;
 
-    // Browser mode - create virtual file with UUID-based path
-    const id = uuidv4();
-    const newFilePath = `${id}/${fileName}`;
-    const activeTeam = this.teamService.activeTeam;
-    const teamId = activeTeam?.id;
+      // Save content locally in localStorage
+      localStorage.setItem(`${this.FILE_CONTENT_PREFIX}${newFilePath}`, initialContent);
 
-    // Save content locally in localStorage
-    localStorage.setItem(`${this.FILE_CONTENT_PREFIX}${newFilePath}`, initialContent);
+      // Create file info object
+      const newFile: FileInfo = {
+        path: newFilePath,
+        name: fileName,
+        team_id: teamId,
+        lastModified: Date.now()
+      };
 
-    // Create file info object
-    const newFile: FileInfo = {
-      path: newFilePath,
-      name: fileName,
-      team_id: teamId,
-      lastModified: Date.now()
-    };
+      // Add to files list and persist to localStorage
+      this.filesInDirectory.push(newFile);
+      this.saveFilesToLocalStorage();
 
-    // Add to files list and persist to localStorage
-    this.filesInDirectory.push(newFile);
-    this.saveFilesToLocalStorage();
-
-    // Create metadata and upload to server if possible
-    return this.metadataService.createMetadata(newFile).pipe(
-      switchMap(metadata => {
-        return this.apiService.uploadFile(
-          fileName,
-          initialContent,
-          metadata,
-          teamId // The API service accepts the teamId parameter
-        ).pipe(
-          catchError(error => {
-            console.error('Failed to upload new file to server:', error);
-            return of(undefined); // Continue even if server upload fails
-          })
-        );
-      })
-    );
+      // Create metadata and upload to server if possible
+      return this.metadataService.createMetadata(newFile).pipe(
+        switchMap(metadata => {
+          return this.apiService.uploadFile(
+            fileName,
+            initialContent,
+            metadata,
+            teamId // The API service accepts the teamId parameter
+          ).pipe(
+            catchError(error => {
+              console.error('Failed to upload new file to server:', error);
+              return of(undefined); // Continue even if server upload fails
+            })
+          );
+        })
+      );
+    }
   }
 
   private syncWithServer(file: FileInfo, content: string): Observable<void> {

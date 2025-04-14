@@ -264,42 +264,108 @@
 
     <!-- SHARED VIEW -->
     <div *ngSwitchCase="'shared'" class="shared-view">
-      <h2 class="view-title">Shared with You</h2>
+      <h2 class="view-title">Teams & Sharing</h2>
 
-      <div class="organizations-section">
-        <h3 class="section-header">Your Organizations</h3>
+      <!-- Teams Section -->
+      <div class="teams-section">
+        <div class="section-header-with-actions">
+          <h3 class="section-header">Your Teams</h3>
+          <button class="add-team-button" (click)="openCreateTeam()">
+            <i class="fas fa-plus"></i> Create Team
+          </button>
+        </div>
 
-        <div class="org-list">
-          <div *ngFor="let org of organizations" class="org-card">
-            <div class="org-avatar" [style.background-color]="org.color">
-              {{ getOrgInitials(org.name) }}
+        <div class="team-list">
+          <div *ngFor="let team of teams" class="team-card" 
+               [class.active]="currentTeam?.id === team.id"
+               (click)="switchToTeam(team)">
+            <div class="team-avatar" [style.backgroundColor]="teamAvatarColor(team)">
+              {{ getInitials(team.name) }}
             </div>
-            <div class="org-info">
-              <h4>{{ org.name }}</h4>
-              <p>{{ org.memberCount }} members</p>
+            <div class="team-info">
+              <h4 class="team-name">{{ team.name }}</h4>
+              <div class="team-role-badge" [ngClass]="getTeamRoleClass(team)">
+                {{ getTeamRoleName(team) }}
+              </div>
+            </div>
+            <div class="team-actions">
+              <button *ngIf="isOwner(team)" class="team-action-button" 
+                      (click)="$event.stopPropagation(); manageTeam(team)">
+                <i class="fas fa-users-cog"></i>
+              </button>
+              <button *ngIf="canInvite(team)" class="team-action-button"
+                      (click)="$event.stopPropagation(); inviteToTeam(team)">
+                <i class="fas fa-user-plus"></i>
+              </button>
             </div>
           </div>
 
-          <div *ngIf="organizations.length === 0" class="empty-state">
+          <div *ngIf="teams.length === 0" class="empty-state">
             <i class="fas fa-users"></i>
-            <p>No organizations</p>
+            <p>You're not part of any teams yet</p>
+            <button class="create-first-team" (click)="openCreateTeam()">
+              <i class="fas fa-plus-circle"></i> Create Your First Team
+            </button>
           </div>
         </div>
       </div>
 
+      <!-- Shared Files Section -->
       <div class="shared-files-section">
         <h3 class="section-header">Shared Notes</h3>
 
         <div class="shared-files-list">
-          <div *ngFor="let file of sharedFiles" class="shared-file-item">
-            <i class="fas fa-file-alt"></i>
-            <span class="file-name">{{ file.name }}</span>
-            <span class="shared-by">Shared by {{ file.owner }}</span>
+          <div *ngFor="let file of sharedFiles" class="shared-file-item" (click)="openFile(file)">
+            <div class="file-icon">
+              <i class="fas fa-file-alt"></i>
+            </div>
+            <div class="file-details">
+              <span class="file-name">{{ file.name }}</span>
+              <span class="shared-by">Shared by {{ file.owner }}</span>
+            </div>
+            <div class="file-actions">
+              <button class="file-action-button" title="Open">
+                <i class="fas fa-external-link-alt"></i>
+              </button>
+            </div>
           </div>
 
           <div *ngIf="sharedFiles.length === 0" class="empty-state">
             <i class="fas fa-share-alt"></i>
             <p>No shared notes</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pending Invitations Section -->
+      <div class="pending-invitations-section" *ngIf="hasPendingInvitations">
+        <div class="section-header-with-actions">
+          <h3 class="section-header">Pending Invitations</h3>
+          <button class="view-all-button" (click)="toggleUserInvitations()">
+            View All
+          </button>
+        </div>
+
+        <div class="invitations-preview">
+          <div class="invitation-card" *ngFor="let invitation of pendingInvitationsPreview">
+            <div class="invitation-icon">
+              <i class="fas fa-envelope"></i>
+            </div>
+            <div class="invitation-details">
+              <h4 class="invitation-team">{{ invitation.team_name }}</h4>
+              <p class="invitation-info">
+                <span class="invitation-from">From: {{ invitation.invited_by_email }}</span>
+                <span class="invitation-role">Role: {{ getInvitationRoleName(invitation.role) }}</span>
+              </p>
+            </div>
+            <div class="invitation-actions">
+              <button class="accept-button" (click)="processInvitation(invitation, true)">
+                <i class="fas fa-check"></i> Accept
+              </button>
+              <button class="decline-button" (click)="processInvitation(invitation, false)">
+                <i class="fas fa-times"></i> Decline
+              </button>
+            </div>
           </div>
         </div>
       </div>

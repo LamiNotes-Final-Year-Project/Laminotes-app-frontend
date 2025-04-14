@@ -1,1 +1,66 @@
-<p>team-selector works!</p>
+<div class="team-selector">
+  <div class="current-team" (click)="toggleDropdown()">
+    <div class="team-badge" *ngIf="activeTeam">
+      {{ getTeamInitials(activeTeam.name) }}
+    </div>
+    <div class="team-badge personal" *ngIf="!activeTeam">
+      <i class="fas fa-user"></i>
+    </div>
+    <div class="team-info">
+      <div class="team-name">{{ activeTeam ? activeTeam.name : 'My Files' }}</div>
+      <div class="team-type">{{ activeTeam ? 'Team' : 'Personal' }}</div>
+    </div>
+    <i class="fas fa-chevron-down"></i>
+  </div>
+
+  <div class="teams-dropdown" *ngIf="isDropdownOpen">
+    <div class="dropdown-header">
+      <h4>Switch Workspace</h4>
+    </div>
+
+    <div class="team-option personal" [class.active]="!activeTeam" (click)="selectTeam(null)">
+      <div class="team-badge personal">
+        <i class="fas fa-user"></i>
+      </div>
+      <div class="team-name">My Files</div>
+    </div>
+
+    <div *ngFor="let team of teams"
+         class="team-option"
+         [class.active]="activeTeam?.id === team.id"
+         (click)="selectTeam(team)">
+      <div class="team-badge">
+        {{ getTeamInitials(team.name) }}
+      </div>
+      <div class="team-name">{{ team.name }}</div>
+    </div>
+
+    <div class="dropdown-footer">
+      <button class="create-team-btn" (click)="openCreateTeamModal()">
+        <i class="fas fa-plus"></i> Create Team
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Create Team Modal -->
+<div class="modal-overlay" *ngIf="isCreateTeamModalOpen" (click)="closeModals()">
+  <div class="modal-content" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h3>Create Team</h3>
+      <button class="close-btn" (click)="closeModals()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label for="teamName">Team Name</label>
+        <input type="text" id="teamName" [(ngModel)]="newTeamName" placeholder="Enter team name">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="cancel-btn" (click)="closeModals()">Cancel</button>
+      <button class="create-btn" [disabled]="!newTeamName" (click)="createTeam()">
+        Create Team
+      </button>
+    </div>
+  </div>
+</div>
