@@ -41,6 +41,12 @@ export interface FileInfo {
 
   /** Optional team ID if the file belongs to a team */
   team_id?: string;
+  
+  /** Optional MIME type of the file */
+  mimeType?: string;
+  
+  /** Indicates if this is a binary file (like an image) rather than text */
+  isBinary?: boolean;
 }
 
 /**
@@ -1303,6 +1309,134 @@ export class FileService {
       })
     );
   }
+  
+  /**
+   * Handles image upload and processing.
+   * Supports both base64 embedded images and file references.
+   * 
+   * @param imageFile - The image file to process
+   * @param maxEmbeddedSize - Maximum size in bytes for embedded images (default: 1MB)
+   * @param forceEmbed - Whether to force embedding regardless of size
+   * @returns Observable containing the markdown text to insert
+   */
+  uploadImage(imageFile: File, maxEmbeddedSize: number = 1024 * 1024, forceEmbed: boolean = false): Observable<string> {
+    console.log(`Processing image: ${imageFile.name} (${imageFile.size} bytes)`);
+    
+    // Determine the storage strategy based on file size and settings
+    const storageStrategy = this.determineImageStorageStrategy(imageFile, maxEmbeddedSize, forceEmbed);
+    
+    if (storageStrategy === 'base64') {
+      return this.embedImageAsBase64(imageFile);
+    } else {
+      // In this initial implementation, we're only supporting base64 embedded images
+      // For external storage, we'd need server-side changes to handle binary files
+      console.log('External file storage not yet implemented, using base64 embedding');
+      return this.embedImageAsBase64(imageFile);
+    }
+  }
+  
+  /**
+   * Determines whether an image should be embedded as base64 or stored as a file.
+   * 
+   * @param imageFile - The image file to check
+   * @param maxEmbeddedSize - Maximum size in bytes for embedded images
+   * @param forceEmbed - Whether to force embedding regardless of size
+   * @returns The storage strategy to use ('base64' or 'external')
+   */
+  private determineImageStorageStrategy(
+    imageFile: File, 
+    maxEmbeddedSize: number, 
+    forceEmbed: boolean
+  ): 'base64' | 'external' {
+    // Always embed if forced
+    if (forceEmbed) {
+      return 'base64';
+    }
+    
+    // Use external storage for larger files
+    if (imageFile.size > maxEmbeddedSize) {
+      return 'external';
+    }
+    
+    // Default to base64 for smaller files
+    return 'base64';
+  }
+  
+  /**
+   * Embeds an image as base64 in markdown format.
+   * 
+   * @param imageFile - The image file to embed
+   * @returns Observable containing the markdown text with the embedded image
+   */
+  private embedImageAsBase64(imageFile: File): Observable<string> {
+    return new Observable<string>(observer => {
+      const reader = new FileReader();
+      
+      reader.onload = (event) => {
+        const dataUrl = event.target?.result as string;
+        
+        if (dataUrl) {
+          // Generate alt text from the filename (without extension)
+          const altText = imageFile.name.split('.')[0] || 'image';
+          
+          // Create markdown image syntax
+          const markdownText = `![${altText}](${dataUrl})`;
+          
+          observer.next(markdownText);
+          observer.complete();
+        } else {
+          observer.error(new Error('Failed to read image data'));
+        }
+      };
+      
+      reader.onerror = (error) => {
+        console.error('Error reading image file:', error);
+        observer.error(new Error('Failed to read image file'));
+      };
+      
+      reader.readAsDataURL(imageFile);
+    });
+  }
+  
+  /**
+   * Gets the MIME type of a file based on its extension.
+   * 
+   * @param filename - The filename to check
+   * @returns The MIME type or undefined if unknown
+   */
+  getMimeType(filename: string): string | undefined {
+    const extension = filename.split('.').pop()?.toLowerCase();
+    
+    if (!extension) {
+      return undefined;
+    }
+    
+    const mimeTypes: Record<string, string> = {
+      'jpg': 'image/jpeg',
+      'jpeg': 'image/jpeg',
+      'png': 'image/png',
+      'gif': 'image/gif',
+      'svg': 'image/svg+xml',
+      'webp': 'image/webp',
+      'md': 'text/markdown',
+      'txt': 'text/plain',
+      'html': 'text/html',
+      'pdf': 'application/pdf',
+    };
+    
+    return mimeTypes[extension];
+  }
+  
+  /**
+   * Checks if a file is an image based on its MIME type.
+   * 
+   * @param file - The file info to check
+   * @returns True if the file is an image
+   */
+  isImageFile(file: FileInfo): boolean {
+    const mimeType = file.mimeType || this.getMimeType(file.name);
+    return mimeType ? mimeType.startsWith('image/') : false;
+  }
 
   renameFile(file: FileInfo, newFileName: string): Observable<void> {
     console.log('Renaming file:', file, 'to', newFileName);
@@ -1530,16 +1664,19 @@ export class FileService {
   debugDownloadFile(filename: string): Observable<FileInfo> {
     console.log(`📥 Starting download of file "${filename}" from server`);
 
-    return this.apiService.getFile(filename).pipe(
+    // Get active team ID if available
+    const activeTeam = this.teamService.activeTeam;
+    const teamId = activeTeam?.id;
+    
+    // Pass team ID to the API call if we have one
+    return this.apiService.getFile(filename, teamId).pipe(
       switchMap(content => {
         console.log(`✅ Downloaded content for "${filename}", length: ${content.length} bytes`);
 
         // Create a new file in local storage
         const id = uuidv4();
         const filePath = `${id}/${filename}`;
-        const activeTeam = this.teamService.activeTeam;
-        const teamId = activeTeam?.id;
-
+        
         console.log(`💾 Saving downloaded file to local storage at path: ${filePath}`);
         localStorage.setItem(`${this.FILE_CONTENT_PREFIX}${filePath}`, content);
 
@@ -1663,6 +1800,20 @@ export class FileService {
         this.currentDirectory = teamDirectory as string;
         return this.performDownloadAllFiles(teamDirectory as string);
       }
+    } else if (this.isMobileEnvironment && activeTeam) {
+      // Handle iOS/iPadOS team download specifically
+      console.log(`📱 Downloading team files on iOS for team: ${activeTeam.name}`);
+      
+      // Ensure there's a team directory structure for iOS
+      const teamPath = `Teams/${activeTeam.name.replace(/[^a-zA-Z0-9]/g, '_')}`;
+      this.currentDirectory = teamPath;
+      
+      return this.capacitorService.createDirectory(teamPath).pipe(
+        switchMap(() => {
+          console.log(`📱 Team directory created/verified on iOS: ${teamPath}`);
+          return this.performDownloadAllFiles(teamPath);
+        })
+      );
     }
 
     // For non-team contexts or non-Electron, use standard download
@@ -1677,6 +1828,12 @@ export class FileService {
    */
   private performDownloadAllFiles(targetDirectory?: string): Observable<void> {
     console.log(`Downloading all files${targetDirectory ? ` to directory: ${targetDirectory}` : ''}`);
+    
+    // Get the active team ID
+    const activeTeam = this.teamService.activeTeam;
+    const activeTeamId = activeTeam?.id;
+    
+    console.log(`Using team context for download: ${activeTeam ? activeTeam.name : 'none'}`);
 
     return this.apiService.listFiles().pipe(
       switchMap(fileNames => {
@@ -1686,12 +1843,8 @@ export class FileService {
 
         // Create observables for each file to download
         const downloadObservables = fileNames.map(fileName =>
-          this.apiService.getFile(fileName).pipe(
+          this.apiService.getFile(fileName, activeTeamId).pipe(
             switchMap(content => {
-              // Create a new file entry
-              const activeTeam = this.teamService.activeTeam;
-              const teamId = activeTeam?.id;
-
               // In Electron with a target directory, save directly to that directory
               if (this.electronService.isElectron() && targetDirectory) {
                 console.log(`Saving downloaded file "${fileName}" to directory: ${targetDirectory}`);
@@ -1708,7 +1861,7 @@ export class FileService {
                 const fileInfo: FileInfo = {
                   path: filePath,
                   name: fileName,
-                  team_id: teamId,
+                  team_id: activeTeamId,
                   lastModified: Date.now()
                 };
 
@@ -1746,14 +1899,14 @@ export class FileService {
                   this.filesInDirectory[existingIndex] = {
                     path: newFilePath,
                     name: fileName,
-                    team_id: teamId
+                    team_id: activeTeamId
                   };
                 } else {
                   // Add new entry
                   this.filesInDirectory.push({
                     path: newFilePath,
                     name: fileName,
-                    team_id: teamId
+                    team_id: activeTeamId
                   });
                 }
 
@@ -1807,6 +1960,30 @@ export class FileService {
 
 // Helper method to perform the actual uploads
   private performUploadAll(teamId?: string): Observable<void> {
+    // If we have a team ID, ensure the team context is activated before uploading
+    if (teamId && this.teamService.activeTeam) {
+      console.log(`🔄 Ensuring team context is activated for team ID: ${teamId}`);
+      
+      // First activate the team context to ensure we have the right token
+      return this.teamService.setActiveTeam(this.teamService.activeTeam).pipe(
+        switchMap(success => {
+          if (success) {
+            console.log(`✅ Team context activated successfully, proceeding with upload`);
+            return this.performBatchUpload(teamId);
+          } else {
+            console.error(`❌ Failed to activate team context for team ID: ${teamId}`);
+            return throwError(() => new Error(`Failed to activate team context for uploads. Try switching teams and back again.`));
+          }
+        })
+      );
+    }
+    
+    // For non-team uploads, proceed directly
+    return this.performBatchUpload(teamId);
+  }
+  
+  // Helper method to perform batch upload of all files
+  private performBatchUpload(teamId?: string): Observable<void> {
     // Create observables for each file to upload
     const uploadObservables = this.filesInDirectory.map(file => {
       const content = localStorage.getItem(`${this.FILE_CONTENT_PREFIX}${file.path}`) || '';
@@ -1819,6 +1996,8 @@ export class FileService {
           return of(metadata);
         }),
         switchMap(metadata => {
+          console.log(`🔼 Uploading file: ${file.name} to ${teamId ? 'team: ' + teamId : 'personal storage'}`);
+          
           return this.apiService.uploadFile(
             file.name,
             content,
@@ -1842,4 +2021,89 @@ export class FileService {
         return of(undefined);
       })
     );
-  }}
+  }
+  
+  /**
+   * Utility method to check and clean up localStorage when needed.
+   * This helps avoid quota errors by removing old content.
+   * 
+   * @returns Observable indicating whether cleanup was performed
+   */
+  cleanupStorage(): Observable<boolean> {
+    console.log('🧹 Checking if localStorage cleanup is needed');
+    
+    try {
+      // Calculate total localStorage usage
+      let totalSize = 0;
+      let imageContentSize = 0;
+      let largestItem = { key: '', size: 0 };
+      const imagePrefixes = [this.FILE_CONTENT_PREFIX, 'image_data_', 'laminotes_img_'];
+      
+      // Count all items to see what's using space
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key) continue;
+        
+        const value = localStorage.getItem(key) || '';
+        const itemSize = key.length + value.length;
+        totalSize += itemSize;
+        
+        // Track largest item for potential cleanup
+        if (itemSize > largestItem.size) {
+          largestItem = { key, size: itemSize };
+        }
+        
+        // Check if this is image content
+        if (imagePrefixes.some(prefix => key.startsWith(prefix))) {
+          imageContentSize += value.length;
+          console.log(`📊 Image item: ${key.substring(0, 20)}... size: ${Math.round(value.length/1024)}KB`);
+        }
+      }
+      
+      if (largestItem.size > 500000) { // 500KB
+        console.warn(`⚠️ Found very large item in localStorage: ${largestItem.key.substring(0, 20)}... (${Math.round(largestItem.size/1024)}KB)`);
+      }
+      
+      console.log(`📊 Total localStorage usage: ${Math.round(totalSize/1024)}KB, Images: ${Math.round(imageContentSize/1024)}KB`);
+      
+      // If close to quota limit, clean up image data
+      // iPad/Safari quota is typically around 5-10MB
+      const QUOTA_WARNING_KB = 4000; // 4MB
+      
+      if (totalSize/1024 > QUOTA_WARNING_KB) {
+        console.warn(`⚠️ LocalStorage near quota limit, performing cleanup`);
+        
+        // Find all image-related keys
+        const imageKeys: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (!key) continue;
+          
+          if (imagePrefixes.some(prefix => key.startsWith(prefix))) {
+            imageKeys.push(key);
+          }
+        }
+        
+        // Sort by key (which includes timestamp for our format)
+        // This ensures we remove oldest items first
+        imageKeys.sort();
+        
+        // Remove the oldest half of image items
+        const keysToRemove = imageKeys.slice(0, Math.ceil(imageKeys.length/2));
+        console.log(`🧹 Removing ${keysToRemove.length} old image items from localStorage`);
+        
+        keysToRemove.forEach(key => {
+          localStorage.removeItem(key);
+        });
+        
+        console.log('✅ Cleanup complete');
+        return of(true);
+      }
+      
+      return of(false);
+    } catch (error) {
+      console.error('❌ Error during storage cleanup:', error);
+      return of(false);
+    }
+  }
+}

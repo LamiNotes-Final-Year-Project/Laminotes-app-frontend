@@ -531,9 +531,11 @@ export class DebugPanelComponent implements OnInit {
 
       // Create a direct HTTP request
       const url = `${this.apiService.baseUrl}/teams/${activeTeam.id}/invitations`;
+      
+      // Use the string name for the role as expected by the backend
       const payload = {
         email: randomEmail,
-        role: roleString
+        role: "Viewer"  // String name as expected by backend
       };
 
       this.addLog('info', `Sending HTTP POST to: ${url}`);

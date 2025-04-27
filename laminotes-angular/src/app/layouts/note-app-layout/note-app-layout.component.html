@@ -155,6 +155,10 @@
               <h3>EDITOR</h3>
             </div>
             <div class="editor-tools">
+              <app-image-uploader 
+                [config]="imageUploaderConfig"
+                (imageInserted)="handleImageUpload($event)">
+              </app-image-uploader>
               <button class="micro-button" (click)="changeViewMode('editor')" [class.active]="viewMode === 'editor'">
                 <i class="fas fa-edit"></i>
               </button>
@@ -171,6 +175,10 @@
               class="editor"
               [value]="markdownContent"
               (input)="onEditorChange($event)"
+              (contextmenu)="onEditorContextMenu($event)"
+              (touchstart)="onEditorTouchStart($event)"
+              (touchend)="onEditorTouchEnd($event)"
+              (mouseup)="onEditorMouseUp($event)"
               placeholder="// Start typing your markdown here..."></textarea>
           </div>
         </div>
@@ -181,14 +189,14 @@
               <h3>PREVIEW</h3>
             </div>
             <div class="preview-tools">
-              <button class="micro-button">
+              <button class="micro-button" title="Expand preview">
                 <i class="fas fa-expand"></i>
               </button>
             </div>
           </div>
-          <div class="preview-container">
+          <div class="preview-container" #previewContainer>
             <app-colored-markdown-view
-              [content]="markdownContent"
+              [content]="processImagesForPreview(markdownContent)"
               [userColors]="userColors">
             </app-colored-markdown-view>
           </div>
@@ -338,7 +346,7 @@
       </div>
 
       <!-- Pending Invitations Section -->
-      <div class="pending-invitations-section" *ngIf="hasPendingInvitations">
+      <div class="pending-invitations-section">
         <div class="section-header-with-actions">
           <h3 class="section-header">Pending Invitations</h3>
           <button class="view-all-button" (click)="toggleUserInvitations()">
@@ -347,26 +355,8 @@
         </div>
 
         <div class="invitations-preview">
-          <div class="invitation-card" *ngFor="let invitation of pendingInvitationsPreview">
-            <div class="invitation-icon">
-              <i class="fas fa-envelope"></i>
-            </div>
-            <div class="invitation-details">
-              <h4 class="invitation-team">{{ invitation.team_name }}</h4>
-              <p class="invitation-info">
-                <span class="invitation-from">From: {{ invitation.invited_by_email }}</span>
-                <span class="invitation-role">Role: {{ getInvitationRoleName(invitation.role) }}</span>
-              </p>
-            </div>
-            <div class="invitation-actions">
-              <button class="accept-button" (click)="processInvitation(invitation, true)">
-                <i class="fas fa-check"></i> Accept
-              </button>
-              <button class="decline-button" (click)="processInvitation(invitation, false)">
-                <i class="fas fa-times"></i> Decline
-              </button>
-            </div>
-          </div>
+          <!-- Use the user-invitations component directly for consistent handling -->
+          <app-user-invitations (invitationAccepted)="onInvitationAccepted()"></app-user-invitations>
         </div>
       </div>
     </div>
@@ -406,5 +396,11 @@
       <app-user-invitations (invitationAccepted)="onInvitationAccepted()"></app-user-invitations>
     </div>
   </div>
+
+  <!-- ML Context Menu -->
+  <app-ml-context-menu 
+    (actionSelected)="onMlActionSelected($event)" 
+    (closed)="onMlContextMenuClosed()">
+  </app-ml-context-menu>
 
 </div>

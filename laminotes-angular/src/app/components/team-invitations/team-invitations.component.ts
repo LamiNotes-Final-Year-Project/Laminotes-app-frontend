@@ -1,4 +1,4 @@
-// laminotes-angular/src/app/components/team-invitations/team-invitations.component.ts
+s// laminotes-angular/src/app/components/team-invitations/team-invitations.component.ts
 import { Component, Input, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -367,10 +367,16 @@ export class TeamInvitationsComponent implements OnInit {
 
     this.isInviting = true;
 
+    // Convert the role to a proper numeric value for the backend
+    const roleValue = Number(this.newInvitation.role);
+
+    // Log the role value being sent to help debug
+    console.log(`Sending invitation with role: ${roleValue} (${TeamRole[roleValue]})`);
+
     this.invitationService.createInvitation(
       this.team.id,
       this.newInvitation.email,
-      this.newInvitation.role
+      roleValue
     ).subscribe({
       next: (invitation) => {
         this.pendingInvitations.push(invitation);
@@ -380,6 +386,7 @@ export class TeamInvitationsComponent implements OnInit {
         this.notificationService.success(`Invitation sent to ${invitation.invited_email}`);
       },
       error: (error) => {
+        console.error('Invitation error details:', error);
         this.notificationService.error(`Failed to send invitation: ${error.message}`);
         this.isInviting = false;
       }

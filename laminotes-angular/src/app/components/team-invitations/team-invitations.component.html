@@ -21,9 +21,9 @@
           id="inviteRole"
           [(ngModel)]="newInvitation.role"
           class="form-select">
-          <option [ngValue]="TeamRole.Viewer">Viewer (Read only)</option>
-          <option [ngValue]="TeamRole.Contributor">Contributor (Can edit)</option>
-          <option [ngValue]="TeamRole.Owner" *ngIf="isOwner">Owner (Full control)</option>
+          <option [value]="TeamRole.Viewer">Viewer (Read only)</option>
+          <option [value]="TeamRole.Contributor">Contributor (Can edit)</option>
+          <option [value]="TeamRole.Owner" *ngIf="isOwner">Owner (Full control)</option>
         </select>
       </div>
 

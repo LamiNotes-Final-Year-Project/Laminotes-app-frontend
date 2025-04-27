@@ -10,10 +10,10 @@
 export interface TextSection {
   /** Starting character index in the document */
   startIndex: number;
-  
+
   /** Ending character index in the document */
   endIndex: number;
-  
+
   /** The text content of this section */
   content: string;
 }
@@ -25,13 +25,13 @@ export interface TextSection {
 export interface DocumentChange {
   /** ID of the user who made the changes */
   userId: string;
-  
+
   /** Display name of the user who made the changes */
   username: string;
-  
+
   /** ISO date string of when the changes were made */
   timestamp: string;
-  
+
   /** Array of text sections that were modified */
   sections: TextSection[];
 }
@@ -43,15 +43,13 @@ export interface DocumentChange {
 export interface MarkdownMetadata {
   /** Unique identifier for the document */
   documentId: string;
-  
+
   /** Array of change sets representing the document's modification history */
   changes: DocumentChange[];
-  
+
   /** Mapping of user IDs to colors for visual representation of authorship */
   userColors: Record<string, string>;
-  
+
   /** ISO date string of when the document was last modified */
   lastModified: string;
-  
-  // TODO: Consider adding version hash or sequence number for conflict resolution
 }

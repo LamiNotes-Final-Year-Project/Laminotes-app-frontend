@@ -51,6 +51,14 @@ export class TeamService {
 
     // Initialize current user ID
     this.initCurrentUserId();
+    
+    // Clear role cache on logout
+    this.authService.isAuthenticated().subscribe(isAuthenticated => {
+      if (!isAuthenticated) {
+        // Clear all team data on logout
+        this.clearAllTeamData();
+      }
+    });
   }
 
   /**
@@ -207,7 +215,7 @@ export class TeamService {
     // clear role cache when swapping team
     this.clearRoleCache();
 
-    console.log(`🔄 Setting active team: ${team ? team.name : 'personal'}`);
+    console.log(`🔄 Setting active team: ${team ? team.name + ' (ID: ' + team.id + ')' : 'personal'}`);
     
     // If switching to a team, validate its directory first
     if (team) {
@@ -223,10 +231,16 @@ export class TeamService {
             // in the file service when files are accessed
           }
           
+          console.log(`🔑 Activating team on backend: ${team.id}`);
           return this.apiService.activateTeam(team.id).pipe(
             tap(response => {
+              console.log(`✅ Team activation successful, received new token`);
+              
               // Update the stored token
-              this.authService.saveToken(response.token).subscribe();
+              this.authService.saveToken(response.token).subscribe({
+                next: () => console.log(`✅ Updated authentication token with team context`),
+                error: (err) => console.error(`❌ Error saving token:`, err)
+              });
     
               // Update local storage and active team
               localStorage.setItem(this.ACTIVE_TEAM_KEY, JSON.stringify(team));
@@ -237,6 +251,11 @@ export class TeamService {
             switchMap(() => of(true)),
             catchError(error => {
               console.error('❌ Error activating team:', error);
+              // Add more detailed error logging
+              console.error('Status code:', error.status);
+              console.error('Error message:', error.message);
+              console.error('Error details:', error.error);
+              
               this.notificationService.error(`Failed to switch team: ${error.message}`);
               return of(false);
             })
@@ -246,8 +265,13 @@ export class TeamService {
     } else {
       return this.apiService.deactivateTeam().pipe(
         tap(response => {
+          console.log(`✅ Team deactivation successful, received new token`);
+          
           // Update the stored token
-          this.authService.saveToken(response.token).subscribe();
+          this.authService.saveToken(response.token).subscribe({
+            next: () => console.log(`✅ Updated authentication token to personal context`),
+            error: (err) => console.error(`❌ Error saving token:`, err)
+          });
 
           // Clear local storage and active team
           localStorage.removeItem(this.ACTIVE_TEAM_KEY);
@@ -258,6 +282,11 @@ export class TeamService {
         switchMap(() => of(true)),
         catchError(error => {
           console.error('❌ Error deactivating team:', error);
+          // Add more detailed error logging
+          console.error('Status code:', error.status);
+          console.error('Error message:', error.message);
+          console.error('Error details:', error.error);
+          
           this.notificationService.error(`Failed to switch to personal files: ${error.message}`);
           return of(false);
         })
@@ -419,6 +448,26 @@ export class TeamService {
   clearRoleCache(): void {
     this.roleCache.clear();
     this.roleCacheExpiry.clear();
+  }
+
+  /**
+   * Clears all team data from memory and localStorage.
+   * Called when logging out to ensure a clean state.
+   */
+  clearAllTeamData(): void {
+    // Clear active team
+    this.activeTeamSubject.next(null);
+    localStorage.removeItem(this.ACTIVE_TEAM_KEY);
+    
+    // Clear role cache
+    this.clearRoleCache();
+    
+    // Clear all team directory mappings from localStorage
+    const teamDirKeys = Object.keys(localStorage)
+      .filter(key => key.startsWith('team_dir_'));
+    teamDirKeys.forEach(key => localStorage.removeItem(key));
+    
+    console.log('🧹 Cleared all team data');
   }
 
   /**

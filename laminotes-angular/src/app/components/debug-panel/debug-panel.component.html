@@ -1,1 +1,56 @@
-<p>debug-panel works!</p>
+<div class="debug-panel">
+  <div class="panel-header">
+    <h2>🛠️ Debug Panel</h2>
+    <span class="version">v1.0</span>
+  </div>
+
+  <div class="panel-section">
+    <h3>API Test: Send Invitation</h3>
+    <div class="form-group">
+      <label for="testEmail">Email Address</label>
+      <input type="email" id="testEmail" [(ngModel)]="testEmail" placeholder="test@example.com" class="form-input">
+    </div>
+    
+    <div class="form-group">
+      <label for="testRole">Role Value</label>
+      <select id="testRole" [(ngModel)]="testRole" class="form-select">
+        <option [value]="0">0 - Viewer</option>
+        <option [value]="1">1 - Contributor</option>
+        <option [value]="2">2 - Owner</option>
+      </select>
+    </div>
+    
+    <div class="form-group">
+      <label for="testPayload">Custom JSON Payload (Optional)</label>
+      <textarea id="testPayload" [(ngModel)]="testPayload" rows="4" placeholder='{"email": "test@example.com", "role": 0}' class="form-input"></textarea>
+    </div>
+    
+    <div class="button-group">
+      <button (click)="testInvitation()" class="debug-button">
+        <i class="fas fa-paper-plane"></i> Send Test Invitation
+      </button>
+      
+      <button (click)="clearLogs()" class="debug-button clear">
+        <i class="fas fa-trash"></i> Clear Logs
+      </button>
+    </div>
+  </div>
+  
+  <div class="panel-section">
+    <h3>Response Logs</h3>
+    <div class="log-container" *ngIf="logs.length > 0">
+      <div *ngFor="let log of logs" class="log-entry" [ngClass]="{'log-success': log.success, 'log-error': !log.success}">
+        <div class="log-header">
+          <span class="log-timestamp">{{ log.timestamp | date:'medium' }}</span>
+          <span class="log-status">{{ log.success ? '✓ Success' : '✗ Error' }}</span>
+        </div>
+        <div class="log-message">{{ log.message }}</div>
+        <pre class="log-details" *ngIf="log.details">{{ log.details }}</pre>
+      </div>
+    </div>
+    <div class="empty-logs" *ngIf="logs.length === 0">
+      <i class="fas fa-inbox"></i>
+      <p>No logs yet</p>
+    </div>
+  </div>
+</div>

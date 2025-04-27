@@ -30,11 +30,13 @@ export class ElectronService {
     );
   }
 
-  saveFile(content: string, filePath?: string, saveAs = false): Observable<void> {
+  saveFile(content: string, filePath?: string, saveAs = false, options: { saveAsBinary?: boolean, mimeType?: string } = {}): Observable<void> {
     console.log('ElectronService.saveFile called with:', {
       contentLength: content ? content.length : 0, 
       filePath, 
-      saveAs
+      saveAs,
+      saveAsBinary: options.saveAsBinary,
+      mimeType: options.mimeType
     });
     
     if (!this.isElectron()) {
@@ -45,14 +47,22 @@ export class ElectronService {
     // First check if electronAPI is available
     if (this.electronAPI) {
       console.log('Using electronAPI.saveFile');
-      const options = { content, filePath, saveAs };
+      const saveOptions = { 
+        content, 
+        filePath, 
+        saveAs,
+        saveAsBinary: options.saveAsBinary || false,
+        mimeType: options.mimeType
+      };
       console.log('Calling with options:', { 
         contentProvided: !!content,
         filePath, 
-        saveAs 
+        saveAs,
+        saveAsBinary: options.saveAsBinary,
+        mimeType: options.mimeType
       });
       
-      return from(this.electronAPI.saveFile(options))
+      return from(this.electronAPI.saveFile(saveOptions))
         .pipe(
           tap((result: any) => console.log('saveFile result:', result)),
           map((result: any) => {

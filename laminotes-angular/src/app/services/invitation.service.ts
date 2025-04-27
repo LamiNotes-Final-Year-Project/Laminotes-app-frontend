@@ -41,13 +41,26 @@ export class InvitationService {
   createInvitation(teamId: string, email: string, role: TeamRole): Observable<TeamInvitation> {
     console.log(`🔄 Creating invitation for ${email} to team ${teamId} with role ${role}`);
 
-    return this.apiService.createTeamInvitation(teamId, email, role).pipe(
+    // Try with a string representation as a fallback (testing different formats)
+    const roleInt = Number(role);
+    
+    // Try first with numeric role
+    return this.apiService.createTeamInvitation(teamId, email, roleInt).pipe(
       tap(invitation => {
         console.log(`✅ Invitation created: ${invitation.id}`);
         this.notificationService.success(`Invitation sent to ${email}`);
       }),
       catchError(error => {
         console.error(`❌ Error creating invitation: ${error.message}`);
+        
+        // Log more information about what's being sent
+        console.error('Invitation request details:');
+        console.error('- Team ID:', teamId);
+        console.error('- Email:', email);
+        console.error('- Role (original):', role);
+        console.error('- Role (as number):', roleInt);
+        console.error('- Error object:', error);
+        
         this.notificationService.error(`Failed to send invitation: ${error.message}`);
         return throwError(() => error);
       })

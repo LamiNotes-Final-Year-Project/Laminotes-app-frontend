@@ -54,6 +54,13 @@ export class AuthService {
   }
 
   logout(): Observable<void> {
+    // First clear all team-related data from localStorage
+    const teamKeys = Object.keys(localStorage).filter(key => 
+      key === 'active_team' || key.startsWith('team_dir_'));
+    
+    teamKeys.forEach(key => localStorage.removeItem(key));
+    
+    // Then delete the auth token
     return this.deleteToken();
   }
 
